@@ -1,0 +1,61 @@
+openapi: 3.0.3
+info:
+  title: UNCONF API
+  description: Backend API for Unconference Registration
+  version: 0.1.0
+paths:
+  /conferences:
+    get:
+      summary: List all available conferences
+      operationId: listConferences
+      responses:
+        '200':
+          description: A list of conferences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conference'
+        '500':
+          description: Server error
+  /health:
+    get:
+      summary: Health check
+      operationId: checkHealth
+      responses:
+        '200':
+          description: Service is healthy
+components:
+  schemas:
+    Conference:
+      type: object
+      required:
+        - id
+        - name
+        - startDate
+        - endDate
+        - location
+        - status
+      properties:
+        id:
+          type: string
+          example: socrates-26
+        name:
+          type: string
+          example: SoCraTes IT 2026
+        startDate:
+          type: string
+          format: date
+          example: "2026-05-20"
+        endDate:
+          type: string
+          format: date
+          example: "2026-05-22"
+        location:
+          type: string
+          example: Rimini, Italy
+        status:
+          type: string
+          enum: [open, closed]
+          example: open
