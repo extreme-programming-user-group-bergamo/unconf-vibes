@@ -1,0 +1,14 @@
+node_modules/
+.git/
+Dockerfile*
+.dockerignore
+*.log*
+.env*
+coverage/
+vendor/
+unconf
+bin/
+dist/
+*.exe
+*.test
+*.out
