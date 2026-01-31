@@ -28,6 +28,8 @@ Must be resolved before Sprint 1 Planning.
 | **Timeline** | Before Sprint 1 Planning |
 | **Status** | ⏳ Pending |
 
+**Prerequisites:** ✅ PRD sharded (stories now in `docs/prd/epic-*.md` files)
+
 **Description:**  
 Extract the 31 stories from `docs/prd.md` into individual YAML files organized by epic.
 
@@ -216,6 +218,8 @@ Create ASCII/text wireframes for key TUI screens to improve developer clarity.
 | Date | Action | Item | Notes |
 |------|--------|------|-------|
 | 2026-01-31 | Created | All | Generated from PO Master Checklist |
+| 2026-01-31 | Complete | PRD Sharding | 13 files created in docs/prd/ |
+| 2026-01-31 | Complete | Architecture Sharding | 23 files created in docs/architecture/ |
 
 ---
 
