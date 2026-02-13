@@ -935,7 +935,7 @@ unconf/
 ### 12.1 Prerequisites
 
 ```bash
-go version   # 1.21 or higher
+go version   # 1.24 or higher
 sqlite3      # For local database
 docker       # For MailHog
 
