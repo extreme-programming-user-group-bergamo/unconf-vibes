@@ -56,6 +56,8 @@
     - [13.1 Deployment Strategy](./13-deployment-architecture.md#131-deployment-strategy)
     - [13.2 CI/CD Pipeline](./13-deployment-architecture.md#132-cicd-pipeline)
     - [13.3 Environments](./13-deployment-architecture.md#133-environments)
+    - [13.4 Secrets and Key Management](./13-deployment-architecture.md#134-secrets-and-key-management)
+    - [13.5 Backup and Recovery (SQLite)](./13-deployment-architecture.md#135-backup-and-recovery-sqlite)
   - [14. Security and Performance](./14-security-and-performance.md)
     - [14.1 Security Requirements](./14-security-and-performance.md#141-security-requirements)
     - [14.2 Token Claim Validation Rules](./14-security-and-performance.md#142-token-claim-validation-rules)

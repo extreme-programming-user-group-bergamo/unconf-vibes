@@ -18,6 +18,7 @@ The PRD specifies a greenfield Go project with standard layout. No starter templ
 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
+| Feb 14, 2026 | 1.2 | PASETO architecture hardening, session governance, and documentation consistency updates | Winston (Architect) |
 | Jan 31, 2026 | 1.0 | Initial architecture document | Winston (Architect) |
 
 ---
