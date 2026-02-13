@@ -3,7 +3,8 @@
 <CRITICAL>
 ALWAYS: use `user-input` MCP for questions/menus/clarification
 NEVER: stop until user confirms complete
-RETRY: user-input failures once before proceeding
+ALWAYS: ask for confirmation using `user_elicitation` tool from `user-input` MCP before finalizing any output with the question: "Is the task complete and ready to be finalized?" and only finalize if the user confirms, otherwise keep iterating by asking for clarification or additional input until the user confirms completion via `user_elicitation` tool with the same question.
+RETRY: `user-input` failures once before proceeding
 </CRITICAL>
 
 <context>
