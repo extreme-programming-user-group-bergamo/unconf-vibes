@@ -83,7 +83,7 @@
 2. `POST /auth/token` endpoint polls for access token completion
 3. GitHub OAuth app credentials configurable via environment variables
 4. On successful auth, user record created/updated in database
-5. JWT token issued for subsequent API authentication
+5. PASETO token issued for subsequent API authentication
 6. Token expiry and refresh mechanism defined
 
 ## Story 1.7: CLI Login Command
@@ -96,7 +96,7 @@
 1. `unconf login` command initiates GitHub device flow
 2. User shown device code and URL to enter it (https://github.com/login/device)
 3. CLI polls backend for authentication completion
-4. On success, auth token stored securely (OS keychain or config file)
+4. On success, auth token stored securely in OS keychain
 5. Success message displayed with user's GitHub username
 6. Subsequent commands can detect authenticated state
 7. `unconf logout` command removes stored credentials

@@ -184,7 +184,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 ### Additional Technical Assumptions and Requests
 
 #### Languages & Frameworks
-- **Go 1.21+** — Primary language for both CLI and backend
+- **Go 1.24+** — Primary language for both CLI and backend
 - **Cobra** — CLI framework (industry standard)
 - **Viper** — Configuration management
 - **Bubble Tea** — TUI framework (Charm ecosystem)
@@ -197,7 +197,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 
 #### Authentication
 - **GitHub OAuth** — Device flow for CLI authentication
-- **Token-based API auth** — JWT or similar for authenticated API requests
+- **Token-based API auth** — PASETO (`v4.local`) for authenticated API requests
 
 #### Email
 - **SMTP standard** — For hotel communication
@@ -217,7 +217,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 
 #### Security
 - **HTTPS only** — All API communication
-- **Secure token storage** — CLI stores auth tokens in OS keychain or secure file
+- **Secure token storage** — CLI stores auth tokens in OS keychain
 
 ---
 
@@ -318,7 +318,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 2. `POST /auth/token` endpoint polls for access token completion
 3. GitHub OAuth app credentials configurable via environment variables
 4. On successful auth, user record created/updated in database
-5. JWT token issued for subsequent API authentication
+5. PASETO token issued for subsequent API authentication
 6. Token expiry and refresh mechanism defined
 
 ### Story 1.7: CLI Login Command
@@ -331,7 +331,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 1. `unconf login` command initiates GitHub device flow
 2. User shown device code and URL to enter it (https://github.com/login/device)
 3. CLI polls backend for authentication completion
-4. On success, auth token stored securely (OS keychain or config file)
+4. On success, auth token stored securely in OS keychain
 5. Success message displayed with user's GitHub username
 6. Subsequent commands can detect authenticated state
 7. `unconf logout` command removes stored credentials
@@ -778,7 +778,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 > 5. **Email integration** — Hotel communication automation
 > 6. **Deployment architecture** — Docker, CI/CD, free-tier hosting
 > 
-> The technical stack is defined: Go 1.21+, Cobra, Bubble Tea, Gin, SQLite (with Repository pattern for future PostgreSQL migration).
+> The technical stack is defined: Go 1.24+, Cobra, Bubble Tea, Gin, SQLite (with Repository pattern for future PostgreSQL migration).
 
 ### UX Expert Prompt
 

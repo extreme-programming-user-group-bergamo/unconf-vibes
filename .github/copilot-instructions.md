@@ -21,7 +21,7 @@ internal/service/  Business logic
 internal/repository/ Data access
 internal/models/   Domain structs
 internal/client/   HTTP client
-internal/auth/     GitHub OAuth+JWT
+internal/auth/     GitHub OAuth+PASETO
 migrations/        golang-migrate
 </context>
 

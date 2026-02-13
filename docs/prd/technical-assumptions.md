@@ -37,7 +37,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 ## Additional Technical Assumptions and Requests
 
 ### Languages & Frameworks
-- **Go 1.21+** — Primary language for both CLI and backend
+- **Go 1.24+** — Primary language for both CLI and backend
 - **Cobra** — CLI framework (industry standard)
 - **Viper** — Configuration management
 - **Bubble Tea** — TUI framework (Charm ecosystem)
@@ -50,7 +50,7 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 
 ### Authentication
 - **GitHub OAuth** — Device flow for CLI authentication
-- **Token-based API auth** — JWT or similar for authenticated API requests
+- **Token-based API auth** — PASETO (`v4.local`) for authenticated API requests
 
 ### Email
 - **SMTP standard** — For hotel communication
@@ -70,6 +70,6 @@ Manual testing convenience methods for TUI interactions (TUI testing is notoriou
 
 ### Security
 - **HTTPS only** — All API communication
-- **Secure token storage** — CLI stores auth tokens in OS keychain or secure file
+- **Secure token storage** — CLI stores auth tokens in OS keychain
 
 ---

@@ -11,7 +11,7 @@
 > 5. **Email integration** — Hotel communication automation
 > 6. **Deployment architecture** — Docker, CI/CD, free-tier hosting
 > 
-> The technical stack is defined: Go 1.21+, Cobra, Bubble Tea, Gin, SQLite (with Repository pattern for future PostgreSQL migration).
+> The technical stack is defined: Go 1.24+, Cobra, Bubble Tea, Gin, SQLite (with Repository pattern for future PostgreSQL migration).
 
 ## UX Expert Prompt
 
