@@ -48,7 +48,7 @@ func (m RoomExplorerModel) View() string { /* render UI */ }
 internal/api/
 ├── routes.go         # Route definitions
 ├── middleware/
-│   ├── auth.go       # JWT authentication
+│   ├── auth.go       # PASETO authentication
 │   ├── cors.go       # CORS configuration
 │   ├── logger.go     # Request logging
 │   └── organizer.go  # Organizer permission check

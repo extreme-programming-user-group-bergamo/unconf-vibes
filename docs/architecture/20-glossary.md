@@ -21,7 +21,7 @@
 | **Repository Pattern** | Design pattern that abstracts data access behind interfaces, enabling database swaps without changing business logic |
 | **Service Layer** | Layer containing business logic, sitting between handlers (HTTP) and repositories (data) |
 | **WAL Mode** | Write-Ahead Logging — SQLite configuration enabling concurrent reads while writing |
-| **JWT** | JSON Web Token — stateless authentication token containing encoded claims |
+| **PASETO** | Platform-Agnostic Security Tokens — safer token format with fixed-purpose cryptography |
 | **Monorepo** | Single repository containing multiple related projects/packages (CLI + server in this case) |
 
 ## UNCONF CLI Commands

@@ -20,7 +20,7 @@
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **JWT** | golang-jwt/jwt/v5 | v5.3+ | API authentication |
+| **PASETO** | aidanwoods.dev/go-paseto | latest | API authentication |
 | **OAuth** | golang.org/x/oauth2 | latest | GitHub integration |
 | **Token Storage** | zalando/go-keyring | v0.2.6+ | Secure CLI storage |
 
@@ -41,7 +41,7 @@
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **SMTP Client** | go-gomail/gomail | v2.0+ | Email sending |
+| **SMTP Client** | wneessen/go-mail | v0.6+ | Email sending |
 | **Dev Testing** | MailHog | v1.0+ | Local email capture |
 | **Production** | SendGrid | API v3 | Email delivery |
 
@@ -114,12 +114,12 @@ require (
     github.com/gin-gonic/gin v1.11.0
     github.com/mattn/go-sqlite3 v1.14.34
     github.com/golang-migrate/migrate/v4 v4.19.1
-    github.com/golang-jwt/jwt/v5 v5.3.1
+    aidanwoods.dev/go-paseto v1.5.2
     github.com/go-resty/resty/v2 v2.17.1
     github.com/go-playground/validator/v10 v10.30.1
     github.com/stretchr/testify v1.11.1
     github.com/zalando/go-keyring v0.2.6
-    gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
+    github.com/wneessen/go-mail v0.6.x
 )
 ```
 

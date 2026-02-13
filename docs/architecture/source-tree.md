@@ -23,7 +23,7 @@ unconf/
 │   ├── api/                     # HTTP API layer (Gin)
 │   │   ├── routes.go            # Route definitions, middleware chain
 │   │   ├── middleware/
-│   │   │   ├── auth.go          # JWT validation, user extraction
+│   │   │   ├── auth.go          # PASETO validation, user extraction
 │   │   │   ├── cors.go          # CORS headers
 │   │   │   ├── logger.go        # Request logging (slog)
 │   │   │   ├── organizer.go     # Organizer permission check
@@ -79,7 +79,7 @@ unconf/
 │   │       └── footer.go        # Shared footer with help
 │   │
 │   ├── service/                 # Business logic layer
-│   │   ├── auth.go              # GitHub OAuth, JWT generation
+│   │   ├── auth.go              # GitHub OAuth, PASETO generation
 │   │   ├── conference.go        # Conference operations
 │   │   ├── room.go              # Room operations, availability
 │   │   ├── booking.go           # Booking lifecycle, validation
@@ -109,7 +109,7 @@ unconf/
 │   │
 │   ├── auth/                    # Authentication
 │   │   ├── github.go            # GitHub OAuth client
-│   │   ├── jwt.go               # JWT generation/validation
+│   │   ├── paseto.go            # PASETO generation/validation
 │   │   └── store.go             # Token storage (keyring)
 │   │
 │   ├── email/                   # Email service

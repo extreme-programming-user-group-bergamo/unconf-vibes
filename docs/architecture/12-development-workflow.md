@@ -54,7 +54,7 @@ make migrate-down
 # Server (.env)
 PORT=8080
 DATABASE_URL=sqlite3://./unconf.db
-JWT_SECRET=your-dev-secret-min-32-chars
+PASETO_SYMMETRIC_KEY=your-dev-base64-key-32-bytes
 GITHUB_CLIENT_ID=xxx
 GITHUB_CLIENT_SECRET=xxx
 SMTP_HOST=localhost

@@ -13,11 +13,11 @@ This is the **definitive technology selection** for UNCONF CLI. All development 
 | **Database** | SQLite | 3.40+ | Data persistence | Simple, file-based, migration-ready |
 | **DB Driver** | mattn/go-sqlite3 | v1.14+ | SQLite Go bindings | Most mature SQLite driver |
 | **Migrations** | golang-migrate | v4.19+ | Schema migrations | Database-agnostic, CLI and library |
-| **Authentication** | JWT | golang-jwt/jwt/v5 v5.3+ | API token authentication | Maintained community fork |
+| **Authentication** | PASETO | aidanwoods.dev/go-paseto latest | API token authentication | Safer by default (no insecure `alg` negotiation) |
 | **OAuth Client** | golang.org/x/oauth2 | latest | GitHub OAuth integration | Official Go OAuth library |
 | **HTTP Client** | net/http + resty | v2.17+ | CLI API calls | Resty for fluent API, retries |
 | **Logging** | log/slog | stdlib (Go 1.24+) | Structured logging | Standard library, no extra dependency |
-| **Email** | gomail | v2.0+ | SMTP email sending | Simple, reliable SMTP client |
+| **Email** | wneessen/go-mail | v0.6+ | SMTP email sending | Actively maintained SMTP client |
 | **Validation** | go-playground/validator | v10.30+ | Input validation | Struct tags, comprehensive rules |
 | **Testing** | go test + testify | v1.11+ | Unit & integration tests | Standard + assertions/mocks |
 | **Linting** | golangci-lint | v2.x (pin latest stable) | Static analysis | Multi-linter aggregator |

@@ -187,11 +187,11 @@ This is the **definitive technology selection** for UNCONF CLI. All development 
 | **Database** | SQLite | 3.40+ | Data persistence | Simple, file-based, migration-ready |
 | **DB Driver** | mattn/go-sqlite3 | v1.14+ | SQLite Go bindings | Most mature SQLite driver |
 | **Migrations** | golang-migrate | v4.19+ | Schema migrations | Database-agnostic, CLI and library |
-| **Authentication** | JWT | golang-jwt/jwt/v5 v5.3+ | API token authentication | Maintained community fork |
+| **Authentication** | PASETO | aidanwoods.dev/go-paseto latest | API token authentication | Safer by default (no insecure `alg` negotiation) |
 | **OAuth Client** | golang.org/x/oauth2 | latest | GitHub OAuth integration | Official Go OAuth library |
 | **HTTP Client** | net/http + resty | v2.17+ | CLI API calls | Resty for fluent API, retries |
 | **Logging** | log/slog | stdlib (Go 1.24+) | Structured logging | Standard library, no extra dependency |
-| **Email** | gomail | v2.0+ | SMTP email sending | Simple, reliable SMTP client |
+| **Email** | wneessen/go-mail | v0.6+ | SMTP email sending | Actively maintained SMTP client |
 | **Validation** | go-playground/validator | v10.30+ | Input validation | Struct tags, comprehensive rules |
 | **Testing** | go test + testify | v1.11+ | Unit & integration tests | Standard + assertions/mocks |
 | **Linting** | golangci-lint | v2.x (pin latest stable) | Static analysis | Multi-linter aggregator |
@@ -413,7 +413,8 @@ UNCONF uses a **RESTful API** with JSON payloads.
 
 **Base URL:** `https://api.unconf.dev/v1` (production)  
 **Content-Type:** `application/json`  
-**Authentication:** Bearer token (JWT) for protected endpoints
+**Authentication:** Bearer token (PASETO) for protected endpoints
+**Token Profile:** PASETO `v4.local` with claims: `sub`, `role`, `conference_slug`, `iat`, `exp`
 
 ### 5.1 Endpoints Summary
 
@@ -422,6 +423,11 @@ UNCONF uses a **RESTful API** with JSON payloads.
 | GET | /health | Health check | No |
 | POST | /auth/device | Initiate GitHub device flow | No |
 | POST | /auth/token | Exchange device code for token | No |
+| POST | /auth/refresh | Rotate access token | Yes |
+| POST | /auth/revoke | Revoke current token/session | Yes |
+| GET | /auth/sessions | List active sessions for current user | Yes |
+| DELETE | /auth/sessions/{session_id} | Revoke specific session | Yes |
+| POST | /auth/revoke-others | Revoke all sessions except current | Yes |
 | GET | /conferences | List conferences | No |
 | GET | /conferences/{slug} | Get conference details | No |
 | POST | /conferences | Create conference | Yes (Organizer) |
@@ -460,15 +466,51 @@ sequenceDiagram
         API->>GH: Check authorization status
         alt Authorized
             GH-->>API: access_token
-            API->>API: Create/update user, Generate JWT
+            API->>API: Create/update user, Generate PASETO
             API-->>CLI: 200 {access_token, user}
         else Pending
             API-->>CLI: 202 Accepted
         end
     end
     
-    Note over CLI: Store JWT in keychain
+    Note over CLI: Store PASETO in keychain
 ```
+
+### 5.3 Token Claim Validation Policy
+
+- **Required Claims:** `iss`, `aud`, `sub`, `role`, `iat`, `nbf`, `exp`, `jti`
+- **Issuer Rule:** `iss` must exactly match `unconf-api`
+- **Audience Rule:** `aud` must contain `unconf-cli`
+- **Time Rules:** reject tokens with missing/invalid `nbf`/`exp`; enforce max clock skew of ±60s
+- **Token Age Rule:** reject tokens older than 24h based on `iat`, even if `exp` is malformed/overlong
+- **Failure Behavior:** invalid claims return `401` with normalized auth error code; no partial authorization
+
+### 5.4 Token Lifecycle Controls
+
+- **Access Token TTL:** 24 hours (PASETO `v4.local`)
+- **Refresh Flow:** `POST /auth/refresh` rotates token and invalidates prior token
+- **Revocation Flow:** `POST /auth/revoke` revokes current token/session immediately
+- **Replay Protection:** include `jti`; maintain denylist for revoked/rotated tokens until expiry
+- **Logout Semantics:** CLI `unconf logout` clears keychain token and calls revocation endpoint when online
+
+### 5.5 Session Governance Model
+
+- **Session Identity:** each login creates `session_id` + device label (user-provided or derived)
+- **Session Binding:** token embeds `sid` claim mapped to server-side session record
+- **Session List:** `GET /auth/sessions` returns active sessions with `session_id`, `device`, `created_at`, `last_seen_at`, `current`
+- **Selective Revocation:** `DELETE /auth/sessions/{session_id}` revokes one session and its active token chain
+- **Global Cleanup:** `POST /auth/revoke-others` revokes all sessions except current
+- **Propagation Target:** revoked sessions become unusable within 60 seconds
+
+### 5.6 Authorization Matrix
+
+| Endpoint Pattern | Attendee | Organizer | Notes |
+|------------------|----------|-----------|-------|
+| `GET /conferences*` | ✅ | ✅ | Public conference read endpoints remain unauthenticated where specified |
+| `GET /bookings`, `POST /bookings`, `DELETE /bookings/{id}` | ✅ (own resources) | ✅ | Enforce ownership unless organizer override is required |
+| `GET /requests`, `POST /requests`, `PUT /requests/{id}/*` | ✅ (own requests) | ✅ | Ownership checks on source/target user |
+| `GET/PUT /users/me` | ✅ | ✅ | Self-service profile only |
+| `POST /conferences`, `POST /conferences/{slug}/rooms`, `PUT /bookings/{id}/confirm`, `GET /conferences/{slug}/export` | ❌ | ✅ | Organizer role required for conference scope |
 
 ---
 
@@ -574,13 +616,13 @@ sequenceDiagram
     loop Poll every 5 seconds
         CLI->>API: POST /auth/token {device_code}
         alt Authorized
-            API-->>CLI: 200 {jwt, user}
+            API-->>CLI: 200 {access_token, user}
         else Pending
             API-->>CLI: 202 Accepted
         end
     end
     
-    CLI->>Store: Save JWT to keychain
+    CLI->>Store: Save PASETO to keychain
     CLI->>User: "Welcome, @username!"
 ```
 
@@ -825,7 +867,7 @@ func (m RoomExplorerModel) View() string { /* render UI */ }
 internal/api/
 ├── routes.go         # Route definitions
 ├── middleware/
-│   ├── auth.go       # JWT authentication
+│   ├── auth.go       # PASETO authentication
 │   ├── cors.go       # CORS configuration
 │   ├── logger.go     # Request logging
 │   └── organizer.go  # Organizer permission check
@@ -944,7 +986,7 @@ make migrate-down
 # Server (.env)
 PORT=8080
 DATABASE_URL=sqlite3://./unconf.db
-JWT_SECRET=your-dev-secret-min-32-chars
+PASETO_SYMMETRIC_KEY=your-dev-base64-key-32-bytes
 GITHUB_CLIENT_ID=xxx
 GITHUB_CLIENT_SECRET=xxx
 SMTP_HOST=localhost
@@ -984,6 +1026,20 @@ api_endpoint: http://localhost:8080/v1
 | Development | http://localhost:8080/v1 | Local development |
 | Production | https://api.unconf.dev/v1 | Live environment |
 
+### 13.4 Secrets and Key Management
+
+- **Development:** `PASETO_SYMMETRIC_KEY` loaded via local `.env` only; never committed
+- **Production:** `PASETO_SYMMETRIC_KEY` managed via Fly.io secrets
+- **Rotation Procedure:** deploy with `ACTIVE_KID` + `PREVIOUS_KID` support, rotate every 90 days, retire previous key after max token TTL
+- **Break-Glass:** emergency rotation revokes all active sessions and forces re-authentication
+
+### 13.5 Backup and Recovery (SQLite)
+
+- **Backup Cadence:** nightly encrypted snapshot of SQLite volume
+- **RPO:** 24 hours
+- **RTO:** 4 hours
+- **Restore Drill:** run restore rehearsal monthly in non-production environment
+
 ---
 
 ## 14. Security and Performance
@@ -992,17 +1048,44 @@ api_endpoint: http://localhost:8080/v1
 
 - **Token Storage:** OS keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager)
 - **HTTPS:** All production traffic over TLS
-- **JWT:** 24-hour expiry
+- **Token Format:** PASETO `v4.local` (symmetric authenticated encryption)
+- **Token TTL:** 24-hour expiry
+- **Key Rotation:** `kid` footer support; rotate signing/encryption keys every 90 days
+- **Replay Protection:** `jti` per token with denylist checks for revoked tokens
 - **Input Validation:** All inputs validated via `go-playground/validator`
 - **SQL Injection:** Parameterized queries only
 
-### 14.2 Performance Targets
+### 14.2 Token Claim Validation Rules
+
+- **Issuer (`iss`):** must equal `unconf-api`
+- **Audience (`aud`):** must include `unconf-cli`
+- **Not-Before (`nbf`):** token not accepted before effective time
+- **Expiry (`exp`):** hard fail on expired token
+- **Issued-At (`iat`):** reject tokens older than 24h
+- **Clock Skew:** tolerate at most ±60 seconds
+
+### 14.3 Session Governance Security
+
+- **Server Session Store:** maintain active sessions keyed by `session_id`
+- **Per-Session Revocation:** immediate revoke for a single device/session
+- **Revoke Others:** support account-level cleanup except current session
+- **Idle Session Policy:** optionally expire inactive sessions after 30 days
+- **Audit Trail:** log session create/refresh/revoke events with user and session identifiers
+
+### 14.4 Edge and Abuse Controls
+
+- **Device Polling Limits:** rate-limit `POST /auth/token` by client/device code
+- **Auth Endpoint Limits:** stricter limits on `/auth/*` than read-only endpoints
+- **CORS Policy:** explicit trusted origins only; deny wildcard in production
+- **Brute-Force Protection:** temporary lockout/backoff on repeated invalid auth attempts
+
+### 14.5 Performance Targets
 
 - **API Response Time:** < 200ms (NFR1)
 - **TUI Render:** 60 FPS (NFR2)
 - **Database:** SQLite with WAL mode
 
-### 14.3 Scalability
+### 14.6 Scalability
 
 **Current Limits (SQLite):**
 - Concurrent users: ~100
@@ -1043,6 +1126,13 @@ func TestBookingRepository_Create(t *testing.T) {
 | Scenario | Steps | Expected |
 |----------|-------|----------|
 | Login flow | `unconf login` | Token stored |
+| Claim validation (issuer/audience) | Send token with wrong `iss` or missing `aud` | Request denied (401) |
+| Claim validation (time-based) | Send expired token or future `nbf` | Request denied (401) |
+| Token refresh | `POST /auth/refresh` with valid token | New token issued, old token invalidated |
+| Token revocation | `POST /auth/revoke` then call protected endpoint | Request denied (401) |
+| Session listing | `GET /auth/sessions` after multi-device login | All active sessions returned with `current` flag |
+| Revoke other sessions | `POST /auth/revoke-others` then test old device token | Old device request denied (401) |
+| Authorization matrix | Attendee calls organizer-only endpoints | Request denied (403) |
 | Room booking | TUI → Wizard | Booking created |
 | Cancellation | `unconf cancel` | Booking cancelled |
 
@@ -1139,8 +1229,23 @@ func HandleError(err error) {
 - Error rate
 - Bookings created/cancelled
 - Email delivery success rate
+- Auth success/failure rate (`/auth/device`, `/auth/token`, `/auth/refresh`, `/auth/revoke`)
+- Token revocation hits (denylist matches)
+- Active session count per user (distribution)
+- Session revoke propagation latency (p95)
 
-### 18.3 Health Check
+### 18.3 SLOs and Alert Thresholds
+
+| SLO | Target | Alert Trigger |
+|-----|--------|---------------|
+| API latency (p95) | < 200ms | p95 > 300ms for 10m |
+| API availability | 99.5% monthly | < 99.0% rolling 1h |
+| Error rate | < 1% | > 2% for 5m |
+| Auth failure ratio | < 5% | > 10% for 10m |
+| Session revocation propagation | p95 < 60s | p95 > 120s for 10m |
+| Email delivery success | > 99% | < 97% for 15m |
+
+### 18.4 Health Check
 
 ```go
 func (h *HealthHandler) Health(c *gin.Context) {
@@ -1231,7 +1336,7 @@ All functional requirements (FR1-FR24) and non-functional requirements (NFR1-NFR
 | **Repository Pattern** | Design pattern that abstracts data access behind interfaces, enabling database swaps without changing business logic |
 | **Service Layer** | Layer containing business logic, sitting between handlers (HTTP) and repositories (data) |
 | **WAL Mode** | Write-Ahead Logging — SQLite configuration enabling concurrent reads while writing |
-| **JWT** | JSON Web Token — stateless authentication token containing encoded claims |
+| **PASETO** | Platform-Agnostic Security Tokens — safer token format with fixed-purpose cryptography |
 | **Monorepo** | Single repository containing multiple related projects/packages (CLI + server in this case) |
 
 ### UNCONF CLI Commands

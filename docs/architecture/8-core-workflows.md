@@ -22,13 +22,13 @@ sequenceDiagram
     loop Poll every 5 seconds
         CLI->>API: POST /auth/token {device_code}
         alt Authorized
-            API-->>CLI: 200 {jwt, user}
+            API-->>CLI: 200 {access_token, user}
         else Pending
             API-->>CLI: 202 Accepted
         end
     end
     
-    CLI->>Store: Save JWT to keychain
+    CLI->>Store: Save PASETO to keychain
     CLI->>User: "Welcome, @username!"
 ```
 
