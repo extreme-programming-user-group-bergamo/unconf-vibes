@@ -25,7 +25,7 @@ unconf/
 │   │   ├── middleware/
 │   │   │   ├── auth.go          # JWT validation, user extraction
 │   │   │   ├── cors.go          # CORS headers
-│   │   │   ├── logger.go        # Request logging (zerolog)
+│   │   │   ├── logger.go        # Request logging (slog)
 │   │   │   ├── organizer.go     # Organizer permission check
 │   │   │   └── recovery.go      # Panic recovery
 │   │   ├── handlers/
@@ -207,11 +207,11 @@ import (
     // 1. Standard library
     "context"
     "fmt"
-    
+    "log/slog"
+
     // 2. Third-party
     "github.com/gin-gonic/gin"
-    "github.com/rs/zerolog/log"
-    
+
     // 3. Internal packages
     "unconf/internal/models"
     "unconf/internal/service"

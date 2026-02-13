@@ -5,7 +5,7 @@
 1. **Repository Pattern:** All DB access through repository interfaces
 2. **Error Wrapping:** `fmt.Errorf("context: %w", err)`
 3. **Context Propagation:** Pass `context.Context` to all I/O functions
-4. **Logging:** Use `zerolog`, never `fmt.Println`
+4. **Logging:** Use `log/slog`, never `fmt.Println`
 5. **Config:** Use Viper wrapper, never `os.Getenv` directly
 6. **No Globals:** Dependency injection only
 7. **Defer Cleanup:** Always `defer rows.Close()`

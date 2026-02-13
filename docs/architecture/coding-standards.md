@@ -58,14 +58,14 @@ func (r *bookingRepo) Create(b *Booking) error {
 
 ### 4. Logging
 
-Use `zerolog` for all output. Never use `fmt.Println()` in production code.
+Use `log/slog` for all output. Never use `fmt.Println()` in production code.
 
 ```go
 // ✅ CORRECT
-log.Info().
-    Str("user_id", userID).
-    Str("room", roomNumber).
-    Msg("booking created")
+slog.Info("booking created",
+    "user_id", userID,
+    "room", roomNumber,
+)
 
 // ❌ WRONG
 fmt.Printf("Booking created for user %s\n", userID)
@@ -154,7 +154,7 @@ import (
     "fmt"
     
     // 2. Third-party
-    "github.com/rs/zerolog/log"
+    "log/slog"
     
     // 3. Internal packages
     "unconf/internal/models"
@@ -385,7 +385,7 @@ Before approving a PR, verify:
 - [ ] Repository pattern used for all DB access
 - [ ] Errors wrapped with context
 - [ ] Context passed to I/O functions
-- [ ] zerolog used for logging
+- [ ] slog used for logging
 - [ ] No direct `os.Getenv()` calls
 - [ ] No global mutable state
 - [ ] Resources cleaned up with defer

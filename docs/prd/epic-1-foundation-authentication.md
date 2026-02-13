@@ -38,7 +38,7 @@
 
 **Acceptance Criteria:**
 1. Gin router initialized with health check endpoint (`GET /health`)
-2. Structured logging configured (e.g., zerolog or zap)
+2. Structured logging configured (using `log/slog`)
 3. Graceful shutdown handling implemented
 4. CORS configured for development
 5. Dockerfile created for containerized deployment

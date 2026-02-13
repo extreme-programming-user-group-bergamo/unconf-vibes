@@ -6,36 +6,36 @@
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **Language** | Go | 1.21+ | All application code |
-| **CLI Framework** | Cobra | v1.8+ | Command structure |
-| **CLI Config** | Viper | v1.18+ | Configuration management |
-| **TUI Framework** | Bubble Tea | v0.25+ | Interactive terminal UI |
-| **TUI Styling** | Lip Gloss | v0.10+ | Terminal styling |
-| **HTTP Framework** | Gin | v1.9+ | REST API |
+| **Language** | Go | 1.24+ | All application code |
+| **CLI Framework** | Cobra | v1.10+ | Command structure |
+| **CLI Config** | Viper | v1.21+ | Configuration management |
+| **TUI Framework** | Bubble Tea | v1.3+ | Interactive terminal UI |
+| **TUI Styling** | Lip Gloss | v1.1+ | Terminal styling |
+| **HTTP Framework** | Gin | v1.11+ | REST API |
 | **Database** | SQLite | 3.40+ | Data persistence |
 | **DB Driver** | mattn/go-sqlite3 | v1.14+ | SQLite bindings |
-| **Migrations** | golang-migrate | v4.16+ | Schema migrations |
+| **Migrations** | golang-migrate | v4.19+ | Schema migrations |
 
 ## Authentication & Security
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **JWT** | golang-jwt/jwt | v5+ | API authentication |
+| **JWT** | golang-jwt/jwt/v5 | v5.3+ | API authentication |
 | **OAuth** | golang.org/x/oauth2 | latest | GitHub integration |
-| **Token Storage** | zalando/go-keyring | v0.2+ | Secure CLI storage |
+| **Token Storage** | zalando/go-keyring | v0.2.6+ | Secure CLI storage |
 
 ## HTTP & Networking
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **HTTP Client** | go-resty/resty | v2.11+ | CLI API calls |
-| **Validation** | go-playground/validator | v10+ | Input validation |
+| **HTTP Client** | go-resty/resty/v2 | v2.17+ | CLI API calls |
+| **Validation** | go-playground/validator/v10 | v10.30+ | Input validation |
 
 ## Logging & Monitoring
 
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
-| **Logging** | rs/zerolog | v1.32+ | Structured logging |
+| **Logging** | log/slog | stdlib (Go 1.24+) | Structured logging |
 
 ## Email
 
@@ -50,8 +50,8 @@
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
 | **Testing** | go test | stdlib | Unit/integration tests |
-| **Assertions** | stretchr/testify | v1.8+ | Test utilities |
-| **Linting** | golangci-lint | v1.55+ | Static analysis |
+| **Assertions** | stretchr/testify | v1.11+ | Test utilities |
+| **Linting** | golangci-lint | v2.x (pin latest stable) | Static analysis |
 
 ## Build & Deploy
 
@@ -69,7 +69,7 @@
 
 ```bash
 # Required
-brew install go          # Go 1.21+
+brew install go          # Go 1.24+
 brew install sqlite      # SQLite
 
 # Recommended
@@ -85,9 +85,9 @@ brew install docker
 
 | Constraint | Reason |
 |------------|--------|
-| Go 1.21+ | Required for `log/slog`, improved generics |
+| Go 1.24+ | Better performance/tooling baseline and long support window |
 | SQLite 3.40+ | JSON functions, window functions |
-| Bubble Tea 0.25+ | Stable API, performance improvements |
+| Bubble Tea 1.3+ | Stable 1.x API and improved terminal behavior |
 
 ## Migration Path
 
@@ -107,19 +107,18 @@ brew install docker
 ```go
 // go.mod excerpt
 require (
-    github.com/spf13/cobra v1.8.0
-    github.com/spf13/viper v1.18.0
-    github.com/charmbracelet/bubbletea v0.25.0
-    github.com/charmbracelet/lipgloss v0.10.0
-    github.com/gin-gonic/gin v1.9.1
-    github.com/mattn/go-sqlite3 v1.14.22
-    github.com/golang-migrate/migrate/v4 v4.17.0
-    github.com/golang-jwt/jwt/v5 v5.2.0
-    github.com/go-resty/resty/v2 v2.11.0
-    github.com/rs/zerolog v1.32.0
-    github.com/go-playground/validator/v10 v10.18.0
-    github.com/stretchr/testify v1.8.4
-    github.com/zalando/go-keyring v0.2.3
+    github.com/spf13/cobra v1.10.2
+    github.com/spf13/viper v1.21.0
+    github.com/charmbracelet/bubbletea v1.3.10
+    github.com/charmbracelet/lipgloss v1.1.0
+    github.com/gin-gonic/gin v1.11.0
+    github.com/mattn/go-sqlite3 v1.14.34
+    github.com/golang-migrate/migrate/v4 v4.19.1
+    github.com/golang-jwt/jwt/v5 v5.3.1
+    github.com/go-resty/resty/v2 v2.17.1
+    github.com/go-playground/validator/v10 v10.30.1
+    github.com/stretchr/testify v1.11.1
+    github.com/zalando/go-keyring v0.2.6
     gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 ```
@@ -136,4 +135,4 @@ require (
 | **GraphQL** | PRD specifies REST; CRUD operations fit REST well |
 | **GORM** | Repository pattern + raw SQL preferred for control |
 | **Echo/Chi** | PRD specifies Gin; all three are good choices |
-| **Zap** | zerolog faster, simpler API |
+| **Zerolog** | Replaced by `log/slog` to reduce external dependencies |

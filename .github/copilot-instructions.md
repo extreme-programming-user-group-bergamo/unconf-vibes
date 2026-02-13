@@ -36,7 +36,7 @@ Context: first param to all I/O functions
 </rules>
 
 <rules priority="2">
-Logging: zerolog only, no fmt.Println
+Logging: log/slog only, no fmt.Println
 Config: Viper wrapper, no os.Getenv
 DI: constructor injection, no globals
 </rules>

@@ -4,7 +4,7 @@
 
 | Component | Tool |
 |-----------|------|
-| Logging | zerolog (JSON) |
+| Logging | log/slog (JSON handler) |
 | Log Aggregation | Fly.io logs |
 | Metrics | Fly.io dashboard |
 | Health Check | `/health` endpoint |
