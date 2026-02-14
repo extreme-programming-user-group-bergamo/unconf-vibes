@@ -221,8 +221,6 @@ $RECYCLE.BIN/
 # Go build artifacts
 bin/
 dist/
-unconf
-unconf-backend
 
 # Environment and secrets
 .env
@@ -243,3 +241,6 @@ config.local.yaml
 
 # Debug binaries
 debug
+
+# Local development files
+.unconf.yaml
