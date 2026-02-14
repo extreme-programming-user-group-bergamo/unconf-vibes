@@ -237,3 +237,9 @@ secrets.yml
 *.db
 *.sqlite
 *.sqlite3
+
+# Local config overrides
+config.local.yaml
+
+# Debug binaries
+debug
