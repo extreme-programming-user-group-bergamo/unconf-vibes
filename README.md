@@ -48,6 +48,44 @@ This produces:
 make test
 ```
 
+Manual API check:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+## API Server
+
+Start API server:
+
+```bash
+make run-server
+```
+
+- Default port: `8080`
+- Health endpoint: `http://localhost:8080/health`
+- API endpoint reference: `docs/architecture/5-api-specification.md`
+
+## Docker
+
+Build image:
+
+```bash
+docker build -t unconf:latest .
+```
+
+Run container:
+
+```bash
+docker run --rm -p 8080:8080 unconf:latest
+```
+
 ## Linting
 
 ```bash
