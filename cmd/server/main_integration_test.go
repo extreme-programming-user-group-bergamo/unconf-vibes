@@ -40,6 +40,8 @@ func TestServerStartup_InitializesDatabaseAndServesHealth(t *testing.T) {
 		"UNCONF_API_ENDPOINT="+apiEndpoint,
 		"UNCONF_DB_PATH="+dbPath,
 		"UNCONF_LOG_LEVEL=debug",
+		"UNCONF_GITHUB_CLIENT_ID=test-client-id",
+		"UNCONF_GITHUB_CLIENT_SECRET=test-client-secret",
 		"UNCONF_PASETO_SYMMETRIC_KEY=0123456789abcdef0123456789abcdef",
 	)
 

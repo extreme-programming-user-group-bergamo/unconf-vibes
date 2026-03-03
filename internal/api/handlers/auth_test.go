@@ -102,3 +102,30 @@ func TestAuthHandlerRefreshMapsInvalidToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+func TestAuthHandlerExchangeDeviceCodeRateLimitedOnRapidPolling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewAuthHandler(&testAuthService{exchangeFn: func(ctx context.Context, deviceCode string) (*service.AuthResult, error) {
+		return nil, &service.PendingAuthError{Interval: 5, Cause: service.ErrAuthorizationPending}
+	}})
+
+	router := gin.New()
+	router.POST("/auth/token", handler.ExchangeDeviceCode)
+
+	payload, _ := json.Marshal(map[string]string{"device_code": "abc"})
+	req1 := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(payload))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusAccepted, w1.Code)
+
+	payload2, _ := json.Marshal(map[string]string{"device_code": "abc"})
+	req2 := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(payload2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusTooManyRequests, w2.Code)
+	assert.Contains(t, w2.Body.String(), `"code":"rate_limited"`)
+}

@@ -1,0 +1,51 @@
+schema: 1
+story: '1.6'
+story_title: 'GitHub OAuth Integration (Backend)'
+gate: PASS
+status_reason: 'Core auth flow ACs are implemented, startup OAuth credential validation and token polling throttling are now in place, and focused tests pass.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-03-03T00:00:00Z'
+quality_score: 97
+expires: '2026-03-17T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 0
+  recommendations:
+    must_fix: []
+    monitor: []
+
+evidence:
+  tests_reviewed: 17
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'PASETO issuance and hashed refresh-session persistence are implemented; startup validation now enforces required GitHub OAuth credentials before serving requests.'
+  performance:
+    status: PASS
+    notes: 'Polling endpoint keeps pending semantics and now includes lightweight request throttling to reduce high-frequency abuse/load.'
+  reliability:
+    status: PASS
+    notes: 'Auth service composes provider, repositories, and token issuance with wrapped errors; refresh rotation persistence and repository tests are passing.'
+  maintainability:
+    status: PASS
+    notes: 'Layering follows architecture constraints (handlers->service->repository), context-first I/O is used, and direct environment reads are centralized in config.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add integration coverage for device->token->refresh happy path and representative provider error mappings.'
+      refs: ['cmd/server/main_integration_test.go', 'internal/service/auth_service_test.go', 'internal/api/handlers/auth_test.go']

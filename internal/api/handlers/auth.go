@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/katurdays/unconf/internal/api/responses"
@@ -13,7 +15,17 @@ import (
 )
 
 type AuthHandler struct {
-	authService serviceAuthService
+	authService  serviceAuthService
+	pollThrottle *pollThrottle
+}
+
+const defaultTokenPollMinInterval = time.Second
+
+type pollThrottle struct {
+	mu          sync.Mutex
+	nextAllowed map[string]time.Time
+	minInterval time.Duration
+	nowFunc     func() time.Time
 }
 
 type serviceAuthService interface {
@@ -31,7 +43,48 @@ type refreshTokenRequest struct {
 }
 
 func NewAuthHandler(authService serviceAuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+	return &AuthHandler{
+		authService:  authService,
+		pollThrottle: newPollThrottle(defaultTokenPollMinInterval),
+	}
+}
+
+func newPollThrottle(minInterval time.Duration) *pollThrottle {
+	if minInterval <= 0 {
+		minInterval = defaultTokenPollMinInterval
+	}
+
+	return &pollThrottle{
+		nextAllowed: make(map[string]time.Time),
+		minInterval: minInterval,
+		nowFunc:     time.Now,
+	}
+}
+
+func (t *pollThrottle) allow(clientKey string) (bool, int) {
+	if t == nil {
+		return true, 0
+	}
+
+	now := t.nowFunc().UTC()
+	if clientKey == "" {
+		return true, 0
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if next, ok := t.nextAllowed[clientKey]; ok && now.Before(next) {
+		retryAfter := int(next.Sub(now).Seconds())
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+
+		return false, retryAfter
+	}
+
+	t.nextAllowed[clientKey] = now.Add(t.minInterval)
+	return true, 0
 }
 
 func (h *AuthHandler) StartDeviceFlow(c *gin.Context) {
@@ -53,6 +106,18 @@ func (h *AuthHandler) StartDeviceFlow(c *gin.Context) {
 func (h *AuthHandler) ExchangeDeviceCode(c *gin.Context) {
 	if h.authService == nil {
 		responses.WriteError(c, "service_unavailable", "Authentication service is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	if allowed, retryAfter := h.pollThrottle.allow(c.ClientIP()); !allowed {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error": gin.H{
+				"code":      "rate_limited",
+				"message":   "Too many token polling requests",
+				"timestamp": time.Now().UTC(),
+			},
+			"retry_after_seconds": retryAfter,
+		})
 		return
 	}
 

@@ -36,6 +36,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if strings.TrimSpace(cfg.GetGitHubClientID()) == "" || strings.TrimSpace(cfg.GetGitHubClientSecret()) == "" {
+		slog.Error("failed to initialize github oauth provider", "error", "github_client_id and github_client_secret must be set")
+		os.Exit(1)
+	}
+
 	listenAddr := resolveListenAddr(cfg.GetAPIEndpoint())
 
 	db, err := initializeDatabase(ctx, cfg)
