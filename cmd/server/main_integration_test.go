@@ -40,6 +40,7 @@ func TestServerStartup_InitializesDatabaseAndServesHealth(t *testing.T) {
 		"UNCONF_API_ENDPOINT="+apiEndpoint,
 		"UNCONF_DB_PATH="+dbPath,
 		"UNCONF_LOG_LEVEL=debug",
+		"UNCONF_PASETO_SYMMETRIC_KEY=0123456789abcdef0123456789abcdef",
 	)
 
 	stopped := false

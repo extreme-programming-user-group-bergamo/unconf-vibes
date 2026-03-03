@@ -6,13 +6,20 @@ import (
 	"github.com/katurdays/unconf/internal/api/middleware"
 )
 
-func NewRouter() *gin.Engine {
+func NewRouter(authHandler *handlers.AuthHandler) *gin.Engine {
 	router := gin.New()
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(gin.Recovery())
 
+	if authHandler == nil {
+		authHandler = handlers.NewAuthHandler(nil)
+	}
+
 	router.GET("/health", handlers.HealthHandler)
+	router.POST("/auth/device", authHandler.StartDeviceFlow)
+	router.POST("/auth/token", authHandler.ExchangeDeviceCode)
+	router.POST("/auth/refresh", authHandler.Refresh)
 
 	return router
 }

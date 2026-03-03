@@ -3,6 +3,7 @@ module github.com/katurdays/unconf
 go 1.24.0
 
 require (
+	aidanwoods.dev/go-paseto v1.4.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/mattn/go-sqlite3 v1.14.34
@@ -13,6 +14,7 @@ require (
 )
 
 require (
+	aidanwoods.dev/go-result v0.0.0-20230617093509-2c57d7732f54 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect

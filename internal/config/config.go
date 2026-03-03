@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -18,6 +19,8 @@ const (
 	defaultDBMaxOpen   = 25
 	defaultDBMaxIdle   = 25
 	defaultDBBusyMS    = 5000
+	defaultTokenTTL    = 24 * time.Hour
+	defaultRefreshTTL  = 7 * 24 * time.Hour
 	defaultConfigName  = ".unconf"
 	defaultConfigType  = "yaml"
 )
@@ -50,6 +53,8 @@ func LoadConfig(ctx context.Context, opts LoadOptions) (*Config, error) {
 	v.SetDefault("db_max_open_conns", defaultDBMaxOpen)
 	v.SetDefault("db_max_idle_conns", defaultDBMaxIdle)
 	v.SetDefault("db_busy_timeout_ms", defaultDBBusyMS)
+	v.SetDefault("token_ttl", defaultTokenTTL.String())
+	v.SetDefault("refresh_ttl", defaultRefreshTTL.String())
 
 	for configKey, flagName := range opts.FlagBindings {
 		if opts.FlagSet == nil {
@@ -129,4 +134,34 @@ func (c *Config) GetConfigFile() string {
 	}
 
 	return c.viper.GetString("config_file")
+}
+
+func (c *Config) GetGitHubClientID() string {
+	return c.viper.GetString("github_client_id")
+}
+
+func (c *Config) GetGitHubClientSecret() string {
+	return c.viper.GetString("github_client_secret")
+}
+
+func (c *Config) GetPasetoSymmetricKey() string {
+	return c.viper.GetString("paseto_symmetric_key")
+}
+
+func (c *Config) GetTokenTTL() time.Duration {
+	ttl, err := time.ParseDuration(c.viper.GetString("token_ttl"))
+	if err != nil || ttl <= 0 {
+		return defaultTokenTTL
+	}
+
+	return ttl
+}
+
+func (c *Config) GetRefreshTTL() time.Duration {
+	ttl, err := time.ParseDuration(c.viper.GetString("refresh_ttl"))
+	if err != nil || ttl <= 0 {
+		return defaultRefreshTTL
+	}
+
+	return ttl
 }

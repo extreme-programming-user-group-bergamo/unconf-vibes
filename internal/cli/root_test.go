@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/katurdays/unconf/internal/repository/sqlite"
@@ -89,8 +90,11 @@ func TestDBStatusCommand(t *testing.T) {
 	err = cmd.Execute()
 	require.NoError(t, err)
 
+	version, _, err := sqlite.MigrationStatus(db)
+	require.NoError(t, err)
+
 	output := out.String()
 	assert.Contains(t, output, "db_path=")
-	assert.Contains(t, output, "migration_version=1")
+	assert.Contains(t, output, "migration_version="+strconv.FormatUint(uint64(version), 10))
 	assert.Contains(t, output, "dirty=false")
 }

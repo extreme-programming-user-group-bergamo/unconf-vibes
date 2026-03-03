@@ -16,8 +16,11 @@ import (
 	"time"
 
 	"github.com/katurdays/unconf/internal/api"
+	"github.com/katurdays/unconf/internal/api/handlers"
+	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/config"
 	"github.com/katurdays/unconf/internal/repository/sqlite"
+	"github.com/katurdays/unconf/internal/service"
 )
 
 const shutdownTimeout = 30 * time.Second
@@ -47,9 +50,31 @@ func main() {
 	}()
 
 	userRepository := sqlite.NewUserRepository(db)
-	_ = userRepository
+	refreshSessionRepository := sqlite.NewRefreshSessionRepository(db)
 
-	router := api.NewRouter()
+	githubProvider := auth.NewHTTPGitHubProvider(cfg.GetGitHubClientID(), cfg.GetGitHubClientSecret(), 10*time.Second)
+	tokenService, err := auth.NewTokenService(cfg.GetPasetoSymmetricKey())
+	if err != nil {
+		slog.Error("failed to initialize token service", "error", err)
+		os.Exit(1)
+	}
+
+	authService, err := service.NewAuthService(
+		githubProvider,
+		tokenService,
+		userRepository,
+		refreshSessionRepository,
+		cfg.GetTokenTTL(),
+		cfg.GetRefreshTTL(),
+	)
+	if err != nil {
+		slog.Error("failed to initialize auth service", "error", err)
+		os.Exit(1)
+	}
+
+	authHandler := handlers.NewAuthHandler(authService)
+
+	router := api.NewRouter(authHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,

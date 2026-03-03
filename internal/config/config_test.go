@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,6 +45,23 @@ func TestLoadConfigFromEnvironment(t *testing.T) {
 	assert.Equal(t, 7500, cfg.GetDBBusyTimeoutMS())
 }
 
+func TestLoadConfigAuthSettingsFromEnvironment(t *testing.T) {
+	t.Setenv("UNCONF_GITHUB_CLIENT_ID", "gh-client-id")
+	t.Setenv("UNCONF_GITHUB_CLIENT_SECRET", "gh-client-secret")
+	t.Setenv("UNCONF_PASETO_SYMMETRIC_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("UNCONF_TOKEN_TTL", "12h")
+	t.Setenv("UNCONF_REFRESH_TTL", "72h")
+
+	cfg, err := LoadConfig(context.Background(), LoadOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, "gh-client-id", cfg.GetGitHubClientID())
+	assert.Equal(t, "gh-client-secret", cfg.GetGitHubClientSecret())
+	assert.Equal(t, "0123456789abcdef0123456789abcdef", cfg.GetPasetoSymmetricKey())
+	assert.Equal(t, 12*time.Hour, cfg.GetTokenTTL())
+	assert.Equal(t, 72*time.Hour, cfg.GetRefreshTTL())
+}
+
 func TestLoadConfigOverridesTakePriority(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "custom.yaml")
@@ -76,6 +94,8 @@ func TestLoadConfigDefaultsApplied(t *testing.T) {
 	assert.Equal(t, defaultDBMaxOpen, cfg.GetDBMaxOpenConns())
 	assert.Equal(t, defaultDBMaxIdle, cfg.GetDBMaxIdleConns())
 	assert.Equal(t, defaultDBBusyMS, cfg.GetDBBusyTimeoutMS())
+	assert.Equal(t, defaultTokenTTL, cfg.GetTokenTTL())
+	assert.Equal(t, defaultRefreshTTL, cfg.GetRefreshTTL())
 }
 
 func TestLoadConfigAutoDiscoversHomeFile(t *testing.T) {
