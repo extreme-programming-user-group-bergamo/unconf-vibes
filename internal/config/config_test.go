@@ -28,12 +28,20 @@ func TestLoadConfigFromExplicitFile(t *testing.T) {
 func TestLoadConfigFromEnvironment(t *testing.T) {
 	t.Setenv("UNCONF_API_ENDPOINT", "https://from-env.example")
 	t.Setenv("UNCONF_LOG_LEVEL", "debug")
+	t.Setenv("UNCONF_DB_PATH", "./from-env.db")
+	t.Setenv("UNCONF_DB_MAX_OPEN_CONNS", "12")
+	t.Setenv("UNCONF_DB_MAX_IDLE_CONNS", "6")
+	t.Setenv("UNCONF_DB_BUSY_TIMEOUT_MS", "7500")
 
 	cfg, err := LoadConfig(context.Background(), LoadOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://from-env.example", cfg.GetAPIEndpoint())
 	assert.Equal(t, "debug", cfg.GetLogLevel())
+	assert.Equal(t, "./from-env.db", cfg.GetDBPath())
+	assert.Equal(t, 12, cfg.GetDBMaxOpenConns())
+	assert.Equal(t, 6, cfg.GetDBMaxIdleConns())
+	assert.Equal(t, 7500, cfg.GetDBBusyTimeoutMS())
 }
 
 func TestLoadConfigOverridesTakePriority(t *testing.T) {
@@ -64,6 +72,10 @@ func TestLoadConfigDefaultsApplied(t *testing.T) {
 
 	assert.Equal(t, defaultAPIEndpoint, cfg.GetAPIEndpoint())
 	assert.Equal(t, defaultLogLevel, cfg.GetLogLevel())
+	assert.Equal(t, defaultDBPath, cfg.GetDBPath())
+	assert.Equal(t, defaultDBMaxOpen, cfg.GetDBMaxOpenConns())
+	assert.Equal(t, defaultDBMaxIdle, cfg.GetDBMaxIdleConns())
+	assert.Equal(t, defaultDBBusyMS, cfg.GetDBBusyTimeoutMS())
 }
 
 func TestLoadConfigAutoDiscoversHomeFile(t *testing.T) {

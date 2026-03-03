@@ -72,6 +72,36 @@ make run-server
 - Health endpoint: `http://localhost:8080/health`
 - API endpoint reference: `docs/architecture/5-api-specification.md`
 
+## Database
+
+- Default SQLite file: `.unconf.db`
+- Override with environment variable: `UNCONF_DB_PATH`
+- Database initialization + migrations run automatically on CLI and server startup
+
+### Database Migration
+
+Run migrations locally:
+
+```bash
+make migrate-up
+```
+
+Rollback migrations:
+
+```bash
+make migrate-down
+```
+
+Recreate schema from scratch:
+
+```bash
+make migrate-fresh
+```
+
+Migration files live in `migrations/` and follow `{version}_{name}.up.sql` / `{version}_{name}.down.sql`.
+
+golang-migrate docs: https://github.com/golang-migrate/migrate
+
 ## Docker
 
 Build image:
@@ -83,8 +113,14 @@ docker build -t unconf:latest .
 Run container:
 
 ```bash
-docker run --rm -p 8080:8080 unconf:latest
+docker volume create unconf-data
+docker run --rm -p 8080:8080 \
+	-e UNCONF_DB_PATH=/data/unconf.db \
+	-v unconf-data:/data \
+	unconf:latest
 ```
+
+This keeps SQLite data across container restarts.
 
 ## Linting
 

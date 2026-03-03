@@ -1,7 +1,7 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: build test lint run-cli run-server build-server clean migrate-up migrate-down docker-build
+.PHONY: build test lint run-cli run-server build-server clean migrate-up migrate-down migrate-fresh docker-build
 
 build:
 	mkdir -p bin
@@ -29,10 +29,14 @@ clean:
 	rm -f *.out *.test
 
 migrate-up:
-	@echo "TODO: add migration tooling"
+	$(GO) run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0 -path migrations -database "sqlite3://.unconf.db" up
 
 migrate-down:
-	@echo "TODO: add migration tooling"
+	$(GO) run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0 -path migrations -database "sqlite3://.unconf.db" down
+
+migrate-fresh:
+	$(GO) run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0 -path migrations -database "sqlite3://.unconf.db" down
+	$(GO) run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0 -path migrations -database "sqlite3://.unconf.db" up
 
 docker-build:
 	docker build -t unconf:latest .

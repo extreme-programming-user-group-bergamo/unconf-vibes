@@ -1,0 +1,44 @@
+name: Docker Smoke Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - epic-1
+  workflow_dispatch:
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t unconf:ci .
+
+      - name: Start container
+        run: |
+          docker run -d --rm --name unconf-ci -p 18080:8080 \
+            -e UNCONF_DB_PATH=/tmp/unconf.db \
+            unconf:ci
+
+      - name: Wait for health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18080/health >/dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed"
+          docker logs unconf-ci
+          exit 1
+
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f unconf-ci || true

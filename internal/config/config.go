@@ -14,6 +14,10 @@ import (
 const (
 	defaultAPIEndpoint = "http://localhost:8080"
 	defaultLogLevel    = "info"
+	defaultDBPath      = ".unconf.db"
+	defaultDBMaxOpen   = 25
+	defaultDBMaxIdle   = 25
+	defaultDBBusyMS    = 5000
 	defaultConfigName  = ".unconf"
 	defaultConfigType  = "yaml"
 )
@@ -42,6 +46,10 @@ func LoadConfig(ctx context.Context, opts LoadOptions) (*Config, error) {
 
 	v.SetDefault("api_endpoint", defaultAPIEndpoint)
 	v.SetDefault("log_level", defaultLogLevel)
+	v.SetDefault("db_path", defaultDBPath)
+	v.SetDefault("db_max_open_conns", defaultDBMaxOpen)
+	v.SetDefault("db_max_idle_conns", defaultDBMaxIdle)
+	v.SetDefault("db_busy_timeout_ms", defaultDBBusyMS)
 
 	for configKey, flagName := range opts.FlagBindings {
 		if opts.FlagSet == nil {
@@ -97,6 +105,22 @@ func (c *Config) GetAPIEndpoint() string {
 
 func (c *Config) GetLogLevel() string {
 	return c.viper.GetString("log_level")
+}
+
+func (c *Config) GetDBPath() string {
+	return c.viper.GetString("db_path")
+}
+
+func (c *Config) GetDBMaxOpenConns() int {
+	return c.viper.GetInt("db_max_open_conns")
+}
+
+func (c *Config) GetDBMaxIdleConns() int {
+	return c.viper.GetInt("db_max_idle_conns")
+}
+
+func (c *Config) GetDBBusyTimeoutMS() int {
+	return c.viper.GetInt("db_busy_timeout_ms")
 }
 
 func (c *Config) GetConfigFile() string {

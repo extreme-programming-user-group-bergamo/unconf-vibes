@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/katurdays/unconf/internal/api"
 	"github.com/katurdays/unconf/internal/config"
+	"github.com/katurdays/unconf/internal/repository/sqlite"
 )
 
 const shutdownTimeout = 30 * time.Second
@@ -32,6 +34,21 @@ func main() {
 	}
 
 	listenAddr := resolveListenAddr(cfg.GetAPIEndpoint())
+
+	db, err := initializeDatabase(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to initialize database", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			slog.Error("failed to close database connection", "error", closeErr)
+		}
+	}()
+
+	userRepository := sqlite.NewUserRepository(db)
+	_ = userRepository
+
 	router := api.NewRouter()
 
 	server := &http.Server{
@@ -68,6 +85,35 @@ func main() {
 		slog.Info("server stopped cleanly")
 		os.Exit(0)
 	}
+}
+
+func initializeDatabase(ctx context.Context, cfg *config.Config) (*sql.DB, error) {
+	db, err := sqlite.NewConnectionManager(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sqlite connection manager: %w", err)
+	}
+
+	if err := sqlite.RunMigrations(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
+	version, dirty, err := sqlite.MigrationStatus(db)
+	if err != nil {
+		slog.Warn("failed to read database migration status", "error", err)
+	} else {
+		slog.Info("database startup diagnostics",
+			"db_path", cfg.GetDBPath(),
+			"db_max_open_conns", cfg.GetDBMaxOpenConns(),
+			"db_max_idle_conns", cfg.GetDBMaxIdleConns(),
+			"db_busy_timeout_ms", cfg.GetDBBusyTimeoutMS(),
+			"migration_version", version,
+			"migration_dirty", dirty,
+		)
+	}
+
+	slog.Info("database initialization complete")
+	return db, nil
 }
 
 func resolveListenAddr(apiEndpoint string) string {

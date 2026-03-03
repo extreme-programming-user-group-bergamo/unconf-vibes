@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/katurdays/unconf/internal/config"
+	"github.com/katurdays/unconf/internal/repository/sqlite"
 	"github.com/spf13/cobra"
 )
 
@@ -35,9 +36,38 @@ room browsing, and booking workflows.`,
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
 
+			db, err := sqlite.NewConnectionManager(cmd.Context(), "")
+			if err != nil {
+				return fmt.Errorf("failed to initialize database connection: %w", err)
+			}
+			defer func() {
+				if closeErr := db.Close(); closeErr != nil {
+					slog.Error("failed to close database connection", "error", closeErr)
+				}
+			}()
+
+			if err := sqlite.RunMigrations(db); err != nil {
+				return fmt.Errorf("failed to run database migrations: %w", err)
+			}
+
+			version, dirty, err := sqlite.MigrationStatus(db)
+			if err != nil {
+				slog.Warn("failed to read migration status", "error", err)
+			} else {
+				slog.Info("database startup diagnostics",
+					"db_path", cfg.GetDBPath(),
+					"db_max_open_conns", cfg.GetDBMaxOpenConns(),
+					"db_max_idle_conns", cfg.GetDBMaxIdleConns(),
+					"db_busy_timeout_ms", cfg.GetDBBusyTimeoutMS(),
+					"migration_version", version,
+					"migration_dirty", dirty,
+				)
+			}
+
 			slog.Info("UNCONF CLI starting",
 				"version", Version,
 				"config_file", cfg.GetConfigFile(),
+				"db_path", cfg.GetDBPath(),
 				"command", cmd.CommandPath(),
 			)
 
@@ -46,7 +76,8 @@ room browsing, and booking workflows.`,
 	}
 
 	rootCmd.SetVersionTemplate("{{printf \"%s %s\\n\" .Name .Version}}")
-	rootCmd.Flags().StringVar(&configFile, "config", "", "Path to config file (default: ./.unconf.yaml or ~/.unconf.yaml)")
+	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to config file (default: ./.unconf.yaml or ~/.unconf.yaml)")
+	rootCmd.AddCommand(newDBCmd())
 
 	return rootCmd
 }
