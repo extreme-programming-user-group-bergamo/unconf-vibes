@@ -128,6 +128,37 @@ This keeps SQLite data across container restarts.
 make lint
 ```
 
+## CI/CD
+
+GitHub Actions workflows are defined in `.github/workflows/`:
+
+- `ci.yaml` runs on `pull_request` and on push to `main`
+- `release.yaml` runs on push of tags matching `v*`, builds all release targets, and publishes a GitHub Release
+- `deploy.yaml` runs on push of tags matching `v*` (placeholder)
+
+Run the same quality gates locally:
+
+```bash
+make test
+make lint
+make build
+```
+
+Create a release tag to trigger the release workflow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Local release smoke test:
+
+```bash
+make release-local
+```
+
+Note: SQLite uses `github.com/mattn/go-sqlite3` (CGO), so `make release-local` runs a single-target GoReleaser build to avoid cross-compilation toolchain issues.
+
 ## Project Structure
 
 Project structure reference: `docs/architecture/11-unified-project-structure.md`

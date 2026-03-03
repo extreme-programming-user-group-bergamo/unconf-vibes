@@ -1,0 +1,13 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # Full implementation deferred - Story 5+ will implement Fly.io deployment

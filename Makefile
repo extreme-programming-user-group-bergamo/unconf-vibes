@@ -1,7 +1,7 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: build test lint run-cli run-server build-server clean migrate-up migrate-down migrate-fresh docker-build
+.PHONY: build test lint run-cli run-server build-server clean migrate-up migrate-down migrate-fresh docker-build release-local
 
 build:
 	mkdir -p bin
@@ -40,3 +40,7 @@ migrate-fresh:
 
 docker-build:
 	docker build -t unconf:latest .
+
+release-local:
+	goreleaser check
+	goreleaser build --snapshot --clean --single-target

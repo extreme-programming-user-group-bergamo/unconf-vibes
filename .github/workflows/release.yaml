@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-artifacts:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            exe: ""
+            archive: tar.gz
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+            exe: ""
+            archive: tar.gz
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            exe: ""
+            archive: tar.gz
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            exe: ".exe"
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+
+      - name: Setup MinGW for Windows CGO
+        if: matrix.goos == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            zip
+          path-type: inherit
+
+      - name: Build binaries with GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: latest
+          args: build --clean --single-target --id unconf --id unconf-server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.goos == 'windows' && 'x86_64-w64-mingw32-gcc' || '' }}
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets package
+
+          unconf_dir="$(find dist -maxdepth 1 -type d -name "unconf_${{ matrix.goos }}_${{ matrix.goarch }}*" | head -n1)"
+          server_dir="$(find dist -maxdepth 1 -type d -name "unconf-server_${{ matrix.goos }}_${{ matrix.goarch }}*" | head -n1)"
+
+          cp "${unconf_dir}/unconf${{ matrix.exe }}" package/
+          cp "${server_dir}/unconf-server${{ matrix.exe }}" package/
+
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            (
+              cd package
+              zip -r "../release-assets/unconf_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.zip" .
+            )
+          else
+            tar -czf "release-assets/unconf_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C package .
+          fi
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          shasum -a 256 * > "unconf_${{ github.ref_name }}_checksums.txt"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
