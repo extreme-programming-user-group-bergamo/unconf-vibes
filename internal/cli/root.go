@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/katurdays/unconf/internal/auth"
+	"github.com/katurdays/unconf/internal/client"
 	"github.com/katurdays/unconf/internal/config"
 	"github.com/katurdays/unconf/internal/repository/sqlite"
 	"github.com/spf13/cobra"
@@ -77,7 +79,21 @@ room browsing, and booking workflows.`,
 
 	rootCmd.SetVersionTemplate("{{printf \"%s %s\\n\" .Name .Version}}")
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to config file (default: ./.unconf.yaml or ~/.unconf.yaml)")
+
+	store := auth.NewKeyringTokenStore("unconf")
+
+	cfg, cfgErr := config.LoadConfig(context.Background(), config.LoadOptions{
+		ConfigFile: configFile,
+	})
+	apiEndpoint := "http://localhost:8080"
+	if cfgErr == nil {
+		apiEndpoint = cfg.GetAPIEndpoint()
+	}
+	apiClient := client.NewClient(apiEndpoint)
+
 	rootCmd.AddCommand(newDBCmd())
+	rootCmd.AddCommand(newLoginCmd(apiClient, store))
+	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 
 	return rootCmd
 }

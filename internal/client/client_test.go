@@ -1,0 +1,304 @@
+package client
+
+import (
+"context"
+"encoding/json"
+"net/http"
+"net/http/httptest"
+"testing"
+
+"github.com/stretchr/testify/assert"
+"github.com/stretchr/testify/require"
+)
+
+func TestStartDeviceFlow_Success(t *testing.T) {
+	expected := DeviceFlowResponse{
+		DeviceCode:      "device-123",
+		UserCode:        "ABCD-1234",
+		VerificationURI: "https://github.com/login/device",
+		ExpiresIn:       900,
+		Interval:        5,
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+assert.Equal(t, http.MethodPost, r.Method)
+assert.Equal(t, "/auth/device", r.URL.Path)
+
+w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.StartDeviceFlow(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, expected.DeviceCode, resp.DeviceCode)
+	assert.Equal(t, expected.UserCode, resp.UserCode)
+	assert.Equal(t, expected.VerificationURI, resp.VerificationURI)
+	assert.Equal(t, expected.ExpiresIn, resp.ExpiresIn)
+	assert.Equal(t, expected.Interval, resp.Interval)
+}
+
+func TestStartDeviceFlow_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "service_unavailable",
+"message": "Auth service not configured",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.StartDeviceFlow(context.Background())
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to start device flow")
+}
+
+func TestExchangeDeviceCode_Success(t *testing.T) {
+	expected := TokenResponse{
+		AccessToken:  "paseto-token",
+		TokenType:    "Bearer",
+		ExpiresIn:    86400,
+		RefreshToken: "refresh-token",
+		User: UserResponse{
+			ID:          1,
+			GitHubID:    "12345",
+			Email:       "user@example.com",
+			DisplayName: "octocat",
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+assert.Equal(t, http.MethodPost, r.Method)
+assert.Equal(t, "/auth/token", r.URL.Path)
+
+var body map[string]string
+json.NewDecoder(r.Body).Decode(&body)
+		assert.Equal(t, "device-123", body["device_code"])
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "device-123")
+
+	require.NoError(t, err)
+	assert.Equal(t, expected.AccessToken, resp.AccessToken)
+	assert.Equal(t, expected.User.DisplayName, resp.User.DisplayName)
+}
+
+func TestExchangeDeviceCode_Pending(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(PendingResponse{
+Status:   "authorization_pending",
+Interval: 5,
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "device-123")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, ErrAuthorizationPending)
+}
+
+func TestExchangeDeviceCode_SlowDown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(PendingResponse{
+Status:   "slow_down",
+Interval: 10,
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "device-123")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, ErrSlowDown)
+}
+
+func TestExchangeDeviceCode_AccessDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "access_denied",
+"message": "Authorization was denied",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "device-123")
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrAccessDenied)
+}
+
+func TestExchangeDeviceCode_ExpiredToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "expired_token",
+"message": "Device authorization has expired",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "device-123")
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrExpiredDeviceCode)
+}
+
+func TestExchangeDeviceCode_InvalidDeviceCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "invalid_device_code",
+"message": "Device code is invalid",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(context.Background(), "bad-code")
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Device code is invalid")
+}
+
+func TestRefreshToken_Success(t *testing.T) {
+	expected := TokenResponse{
+		AccessToken:  "new-access-token",
+		TokenType:    "Bearer",
+		ExpiresIn:    86400,
+		RefreshToken: "new-refresh-token",
+		User: UserResponse{
+			ID:          1,
+			GitHubID:    "12345",
+			Email:       "user@example.com",
+			DisplayName: "octocat",
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+assert.Equal(t, http.MethodPost, r.Method)
+assert.Equal(t, "/auth/refresh", r.URL.Path)
+
+var body map[string]string
+json.NewDecoder(r.Body).Decode(&body)
+		assert.Equal(t, "old-refresh-token", body["refresh_token"])
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.RefreshToken(context.Background(), "old-refresh-token")
+
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", resp.AccessToken)
+	assert.Equal(t, "new-refresh-token", resp.RefreshToken)
+}
+
+func TestRefreshToken_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "invalid_refresh_token",
+"message": "Refresh token is invalid",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	resp, err := c.RefreshToken(context.Background(), "bad-token")
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to refresh token")
+}
+
+func TestRevokeToken_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+assert.Equal(t, http.MethodPost, r.Method)
+assert.Equal(t, "/auth/revoke", r.URL.Path)
+assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
+
+w.WriteHeader(http.StatusOK)
+}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.RevokeToken(context.Background(), "my-token")
+
+	assert.NoError(t, err)
+}
+
+func TestRevokeToken_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+"error": map[string]string{
+"code":    "internal_error",
+"message": "Something went wrong",
+},
+})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.RevokeToken(context.Background(), "my-token")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to revoke token")
+}
+
+func TestExchangeDeviceCode_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+w.WriteHeader(http.StatusOK)
+}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := NewClient(srv.URL)
+	resp, err := c.ExchangeDeviceCode(ctx, "device-123")
+
+	assert.Nil(t, resp)
+	assert.Error(t, err)
+}

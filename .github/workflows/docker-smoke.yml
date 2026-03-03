@@ -24,6 +24,9 @@ jobs:
         run: |
           docker run -d --rm --name unconf-ci -p 18080:8080 \
             -e UNCONF_DB_PATH=/tmp/unconf.db \
+            -e UNCONF_GITHUB_CLIENT_ID=smoke-test-id \
+            -e UNCONF_GITHUB_CLIENT_SECRET=smoke-test-secret \
+            -e UNCONF_PASETO_SYMMETRIC_KEY=0123456789abcdef0123456789abcdef \
             unconf:ci
 
       - name: Wait for health endpoint
