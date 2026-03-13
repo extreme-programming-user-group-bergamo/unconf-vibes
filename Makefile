@@ -15,10 +15,10 @@ lint:
 	$(GOLANGCI_LINT) run ./...
 
 run-cli: build
-	./bin/unconf
+	set -a && . ./.env && set +a && ./bin/unconf
 
 run-server:
-	$(GO) run ./cmd/server
+	set -a && . ./.env && set +a && $(GO) run ./cmd/server
 
 build-server:
 	mkdir -p bin
