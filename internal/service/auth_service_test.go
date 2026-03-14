@@ -76,6 +76,10 @@ func (r *testRefreshRepository) Rotate(ctx context.Context, currentSessionID int
 	return &models.RefreshSession{ID: 100, UserID: replacement.UserID}, nil
 }
 
+func (r *testRefreshRepository) RevokeByID(_ context.Context, _ int64) error {
+	return nil
+}
+
 func TestAuthServiceExchangeDeviceCodeMapsPendingError(t *testing.T) {
 	svc, err := NewAuthService(
 		&testProvider{exchangeFn: func(ctx context.Context, deviceCode string) (*auth.OAuthAccessToken, error) {

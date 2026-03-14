@@ -195,4 +195,28 @@ func scanRefreshSessionRow(row *sql.Row) (*models.RefreshSession, error) {
 	return &session, nil
 }
 
+func (r *RefreshSessionRepository) RevokeByID(ctx context.Context, sessionID int64) error {
+	query := `
+		UPDATE refresh_sessions
+		SET revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND revoked_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh session: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check revoked refresh session rows: %w", err)
+	}
+
+	if affected == 0 {
+		return repository.ErrRefreshSessionNotFound
+	}
+
+	return nil
+}
+
 var _ repository.RefreshSessionRepository = (*RefreshSessionRepository)(nil)

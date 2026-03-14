@@ -248,6 +248,21 @@ func (s *AuthService) issueSessionTokens(ctx context.Context, user *models.User,
 	}, nil
 }
 
+// RevokeSession revokes a refresh session by its ID.
+func (s *AuthService) RevokeSession(ctx context.Context, sessionID int64) error {
+	if err := s.refreshRepo.RevokeByID(ctx, sessionID); err != nil {
+		if errors.Is(err, repository.ErrRefreshSessionNotFound) {
+			return fmt.Errorf("failed to revoke session: %w", ErrSessionNotFound)
+		}
+
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	slog.Info("session revoked", "session_id", sessionID)
+
+	return nil
+}
+
 func (s *AuthService) upsertUser(ctx context.Context, profile *auth.GitHubProfile) (*models.User, error) {
 	if profile == nil {
 		return nil, fmt.Errorf("failed to upsert user: github profile is nil")
