@@ -106,6 +106,98 @@ func (s *TokenService) GenerateRefreshToken() (string, string, error) {
 	return raw, hash, nil
 }
 
+const (
+	clockSkewTolerance = 60 * time.Second
+	maxTokenAge        = 24 * time.Hour
+)
+
+// ValidateToken decrypts and validates a PASETO v4.local token, returning the embedded claims.
+func (s *TokenService) ValidateToken(ctx context.Context, encrypted string) (*AccessTokenClaims, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	parser := paseto.NewParserWithoutExpiryCheck()
+	token, err := parser.ParseV4Local(s.v4, encrypted, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	iss, err := token.GetIssuer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: missing issuer claim")
+	}
+	if iss != "unconf-api" {
+		return nil, fmt.Errorf("failed to validate token: invalid issuer %q", iss)
+	}
+
+	aud, err := token.GetAudience()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: missing audience claim")
+	}
+	if aud != "unconf-cli" {
+		return nil, fmt.Errorf("failed to validate token: invalid audience %q", aud)
+	}
+
+	now := s.nowFunc().UTC()
+
+	exp, err := token.GetExpiration()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: missing expiration claim")
+	}
+	if now.After(exp.Add(clockSkewTolerance)) {
+		return nil, fmt.Errorf("failed to validate token: token expired")
+	}
+
+	nbf, err := token.GetNotBefore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: missing not-before claim")
+	}
+	if now.Add(clockSkewTolerance).Before(nbf) {
+		return nil, fmt.Errorf("failed to validate token: token not yet valid")
+	}
+
+	iat, err := token.GetIssuedAt()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: missing issued-at claim")
+	}
+	if now.Sub(iat) > maxTokenAge+clockSkewTolerance {
+		return nil, fmt.Errorf("failed to validate token: token exceeds maximum age")
+	}
+
+	jti, err := token.GetJti()
+	if err != nil || jti == "" {
+		return nil, fmt.Errorf("failed to validate token: missing jti claim")
+	}
+
+	sub, err := token.GetSubject()
+	if err != nil || sub == "" {
+		return nil, fmt.Errorf("failed to validate token: missing subject claim")
+	}
+	userID, err := strconv.ParseInt(sub, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: invalid subject: %w", err)
+	}
+
+	var sidStr string
+	if err := token.Get("sid", &sidStr); err != nil || sidStr == "" {
+		return nil, fmt.Errorf("failed to validate token: missing session id claim")
+	}
+	sessionID, err := strconv.ParseInt(sidStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: invalid session id: %w", err)
+	}
+
+	return &AccessTokenClaims{
+		UserID:    userID,
+		SessionID: sessionID,
+		JTI:       jti,
+		IssuedAt:  iat,
+		NotBefore: nbf,
+		ExpiresAt: exp,
+	}, nil
+}
+
 func hashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
