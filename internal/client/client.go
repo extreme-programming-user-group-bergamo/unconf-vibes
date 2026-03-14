@@ -195,6 +195,35 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 	return nil
 }
 
+// ErrUnauthorized is returned when the API responds with 401.
+var ErrUnauthorized = errors.New("unauthorized")
+
+// GetMe fetches the current authenticated user's profile via GET /users/me.
+func (c *Client) GetMe(ctx context.Context, accessToken string) (*UserResponse, error) {
+	var user UserResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetResult(&user).
+		SetError(&errEnvelope).
+		Get("/users/me")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user profile: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to get user profile: %w", ErrUnauthorized)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to get user profile: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &user, nil
+}
+
 // mapAPIErrorCode maps backend error codes to client-side sentinel errors.
 func mapAPIErrorCode(code string) error {
 	switch code {

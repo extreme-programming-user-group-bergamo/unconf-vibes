@@ -1,14 +1,14 @@
 package client
 
 import (
-"context"
-"encoding/json"
-"net/http"
-"net/http/httptest"
-"testing"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-"github.com/stretchr/testify/assert"
-"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStartDeviceFlow_Success(t *testing.T) {
@@ -21,10 +21,10 @@ func TestStartDeviceFlow_Success(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-assert.Equal(t, http.MethodPost, r.Method)
-assert.Equal(t, "/auth/device", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/auth/device", r.URL.Path)
 
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
@@ -42,14 +42,14 @@ w.Header().Set("Content-Type", "application/json")
 
 func TestStartDeviceFlow_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "service_unavailable",
-"message": "Auth service not configured",
-},
-})
+			"error": map[string]string{
+				"code":    "service_unavailable",
+				"message": "Auth service not configured",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -76,11 +76,11 @@ func TestExchangeDeviceCode_Success(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-assert.Equal(t, http.MethodPost, r.Method)
-assert.Equal(t, "/auth/token", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/auth/token", r.URL.Path)
 
-var body map[string]string
-json.NewDecoder(r.Body).Decode(&body)
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "device-123", body["device_code"])
 
 		w.Header().Set("Content-Type", "application/json")
@@ -98,12 +98,12 @@ json.NewDecoder(r.Body).Decode(&body)
 
 func TestExchangeDeviceCode_Pending(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(PendingResponse{
-Status:   "authorization_pending",
-Interval: 5,
-})
+			Status:   "authorization_pending",
+			Interval: 5,
+		})
 	}))
 	defer srv.Close()
 
@@ -116,12 +116,12 @@ Interval: 5,
 
 func TestExchangeDeviceCode_SlowDown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(PendingResponse{
-Status:   "slow_down",
-Interval: 10,
-})
+			Status:   "slow_down",
+			Interval: 10,
+		})
 	}))
 	defer srv.Close()
 
@@ -134,14 +134,14 @@ Interval: 10,
 
 func TestExchangeDeviceCode_AccessDenied(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "access_denied",
-"message": "Authorization was denied",
-},
-})
+			"error": map[string]string{
+				"code":    "access_denied",
+				"message": "Authorization was denied",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -155,14 +155,14 @@ w.Header().Set("Content-Type", "application/json")
 
 func TestExchangeDeviceCode_ExpiredToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "expired_token",
-"message": "Device authorization has expired",
-},
-})
+			"error": map[string]string{
+				"code":    "expired_token",
+				"message": "Device authorization has expired",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -176,14 +176,14 @@ w.Header().Set("Content-Type", "application/json")
 
 func TestExchangeDeviceCode_InvalidDeviceCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "invalid_device_code",
-"message": "Device code is invalid",
-},
-})
+			"error": map[string]string{
+				"code":    "invalid_device_code",
+				"message": "Device code is invalid",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -210,11 +210,11 @@ func TestRefreshToken_Success(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-assert.Equal(t, http.MethodPost, r.Method)
-assert.Equal(t, "/auth/refresh", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/auth/refresh", r.URL.Path)
 
-var body map[string]string
-json.NewDecoder(r.Body).Decode(&body)
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "old-refresh-token", body["refresh_token"])
 
 		w.Header().Set("Content-Type", "application/json")
@@ -232,14 +232,14 @@ json.NewDecoder(r.Body).Decode(&body)
 
 func TestRefreshToken_Error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "invalid_refresh_token",
-"message": "Refresh token is invalid",
-},
-})
+			"error": map[string]string{
+				"code":    "invalid_refresh_token",
+				"message": "Refresh token is invalid",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -253,12 +253,12 @@ w.Header().Set("Content-Type", "application/json")
 
 func TestRevokeToken_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-assert.Equal(t, http.MethodPost, r.Method)
-assert.Equal(t, "/auth/revoke", r.URL.Path)
-assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/auth/revoke", r.URL.Path)
+		assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
 
-w.WriteHeader(http.StatusOK)
-}))
+		w.WriteHeader(http.StatusOK)
+	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
@@ -269,14 +269,14 @@ w.WriteHeader(http.StatusOK)
 
 func TestRevokeToken_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]any{
-"error": map[string]string{
-"code":    "internal_error",
-"message": "Something went wrong",
-},
-})
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "Something went wrong",
+			},
+		})
 	}))
 	defer srv.Close()
 
@@ -289,8 +289,8 @@ w.Header().Set("Content-Type", "application/json")
 
 func TestExchangeDeviceCode_ContextCancelled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-w.WriteHeader(http.StatusOK)
-}))
+		w.WriteHeader(http.StatusOK)
+	}))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -301,4 +301,61 @@ w.WriteHeader(http.StatusOK)
 
 	assert.Nil(t, resp)
 	assert.Error(t, err)
+}
+
+func TestGetMe_Success(t *testing.T) {
+	expected := UserResponse{
+		ID:          42,
+		GitHubID:    "12345",
+		Email:       "user@example.com",
+		DisplayName: "octocat",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/users/me", r.URL.Path)
+		assert.Equal(t, "Bearer my-access-token", r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	user, err := c.GetMe(context.Background(), "my-access-token")
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), user.ID)
+	assert.Equal(t, "octocat", user.DisplayName)
+	assert.Equal(t, "user@example.com", user.Email)
+}
+
+func TestGetMe_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unauthorized",
+				"message": "Invalid or expired token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	user, err := c.GetMe(context.Background(), "bad-token")
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+}
+
+func TestGetMe_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	user, err := c.GetMe(context.Background(), "token")
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get user profile")
 }
