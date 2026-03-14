@@ -198,6 +198,10 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 // ErrUnauthorized is returned when the API responds with 401.
 var ErrUnauthorized = errors.New("unauthorized")
 
+// ErrSessionExpired is returned when the access token is expired and the refresh token
+// is also invalid/expired/revoked, requiring a full re-login.
+var ErrSessionExpired = errors.New("session expired: please run 'unconf login' to re-authenticate")
+
 // GetMe fetches the current authenticated user's profile via GET /users/me.
 func (c *Client) GetMe(ctx context.Context, accessToken string) (*UserResponse, error) {
 	var user UserResponse
