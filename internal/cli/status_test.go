@@ -12,24 +12,20 @@ import (
 )
 
 type mockStatusClient struct {
-	getMeFn func(ctx context.Context, accessToken string) (*client.UserResponse, error)
+	getMeFn func(ctx context.Context) (*client.UserResponse, error)
 }
 
-func (m *mockStatusClient) GetMe(ctx context.Context, accessToken string) (*client.UserResponse, error) {
+func (m *mockStatusClient) GetMe(ctx context.Context) (*client.UserResponse, error) {
 	if m.getMeFn != nil {
-		return m.getMeFn(ctx, accessToken)
+		return m.getMeFn(ctx)
 	}
 
 	return nil, nil
 }
 
 func TestStatusCmd_AuthenticatedUser(t *testing.T) {
-	store := auth.NewMockTokenStore()
-	store.SetTokens("valid-access-token", "valid-refresh-token")
-
 	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context, token string) (*client.UserResponse, error) {
-			assert.Equal(t, "valid-access-token", token)
+		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
 			return &client.UserResponse{
 				ID:          42,
 				GitHubID:    "12345",
@@ -39,7 +35,7 @@ func TestStatusCmd_AuthenticatedUser(t *testing.T) {
 		},
 	}
 
-	cmd := newStatusCmd(statusClient, store)
+	cmd := newStatusCmd(statusClient)
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
@@ -55,11 +51,13 @@ func TestStatusCmd_AuthenticatedUser(t *testing.T) {
 }
 
 func TestStatusCmd_NotLoggedIn(t *testing.T) {
-	store := auth.NewMockTokenStore()
+	statusClient := &mockStatusClient{
+		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
+			return nil, auth.ErrNotAuthenticated
+		},
+	}
 
-	statusClient := &mockStatusClient{}
-
-	cmd := newStatusCmd(statusClient, store)
+	cmd := newStatusCmd(statusClient)
 	var stderr bytes.Buffer
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&stderr)
@@ -71,17 +69,14 @@ func TestStatusCmd_NotLoggedIn(t *testing.T) {
 	assert.Contains(t, stderr.String(), "not logged in")
 }
 
-func TestStatusCmd_API401ClearsTokens(t *testing.T) {
-	store := auth.NewMockTokenStore()
-	store.SetTokens("expired-token", "refresh-token")
-
+func TestStatusCmd_SessionExpired(t *testing.T) {
 	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context, _ string) (*client.UserResponse, error) {
-			return nil, client.ErrUnauthorized
+		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
+			return nil, client.ErrSessionExpired
 		},
 	}
 
-	cmd := newStatusCmd(statusClient, store)
+	cmd := newStatusCmd(statusClient)
 	var stderr bytes.Buffer
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&stderr)
@@ -89,24 +84,18 @@ func TestStatusCmd_API401ClearsTokens(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, client.ErrUnauthorized)
+	assert.ErrorIs(t, err, client.ErrSessionExpired)
 	assert.Contains(t, stderr.String(), "session has expired")
-
-	// Verify tokens were cleared
-	assert.False(t, store.HasValidToken())
 }
 
 func TestStatusCmd_NetworkError(t *testing.T) {
-	store := auth.NewMockTokenStore()
-	store.SetTokens("valid-token", "refresh-token")
-
 	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context, _ string) (*client.UserResponse, error) {
+		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
 			return nil, assert.AnError
 		},
 	}
 
-	cmd := newStatusCmd(statusClient, store)
+	cmd := newStatusCmd(statusClient)
 	var stderr bytes.Buffer
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&stderr)

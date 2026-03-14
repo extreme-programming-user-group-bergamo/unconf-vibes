@@ -90,11 +90,12 @@ room browsing, and booking workflows.`,
 		apiEndpoint = cfg.GetAPIEndpoint()
 	}
 	apiClient := client.NewClient(apiEndpoint)
+	authClient := client.NewAuthenticatedClient(apiClient, store)
 
 	rootCmd.AddCommand(newDBCmd())
 	rootCmd.AddCommand(newLoginCmd(apiClient, store))
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
-	rootCmd.AddCommand(newStatusCmd(apiClient, store))
+	rootCmd.AddCommand(newStatusCmd(authClient))
 
 	return rootCmd
 }
