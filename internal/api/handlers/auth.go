@@ -32,6 +32,7 @@ type serviceAuthService interface {
 	StartDeviceFlow(ctx context.Context) (*auth.DeviceAuthorization, error)
 	ExchangeDeviceCode(ctx context.Context, deviceCode string) (*service.AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*service.AuthResult, error)
+	RevokeSession(ctx context.Context, sessionID int64) error
 }
 
 type exchangeTokenRequest struct {
@@ -163,6 +164,38 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *AuthHandler) Revoke(c *gin.Context) {
+	if h.authService == nil {
+		responses.WriteError(c, "service_unavailable", "Authentication service is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	sessionID, ok := c.Get("session_id")
+	if !ok {
+		responses.WriteError(c, "unauthorized", "Session ID not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	sid, ok := sessionID.(int64)
+	if !ok {
+		responses.WriteError(c, "unauthorized", "Invalid session ID", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.authService.RevokeSession(c.Request.Context(), sid); err != nil {
+		if errors.Is(err, service.ErrSessionNotFound) {
+			responses.WriteError(c, "session_not_found", "Session not found or already revoked", http.StatusUnauthorized)
+			return
+		}
+
+		slog.Error("failed to revoke session", "error", err)
+		responses.WriteError(c, "internal_error", "Failed to revoke session", http.StatusInternalServerError)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func mapPendingError(c *gin.Context, err error) bool {

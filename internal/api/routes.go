@@ -6,7 +6,7 @@ import (
 	"github.com/katurdays/unconf/internal/api/middleware"
 )
 
-func NewRouter(authHandler *handlers.AuthHandler) *gin.Engine {
+func NewRouter(authHandler *handlers.AuthHandler, tokenValidator middleware.TokenValidator, userHandler *handlers.UserHandler) *gin.Engine {
 	router := gin.New()
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.LoggingMiddleware())
@@ -20,6 +20,18 @@ func NewRouter(authHandler *handlers.AuthHandler) *gin.Engine {
 	router.POST("/auth/device", authHandler.StartDeviceFlow)
 	router.POST("/auth/token", authHandler.ExchangeDeviceCode)
 	router.POST("/auth/refresh", authHandler.Refresh)
+
+	if tokenValidator != nil {
+		protected := router.Group("")
+		protected.Use(middleware.AuthMiddleware(tokenValidator))
+
+		protected.POST("/auth/revoke", authHandler.Revoke)
+
+		if userHandler != nil {
+			protected.GET("/users/me", userHandler.GetMe)
+			protected.PUT("/users/me", userHandler.UpdateMe)
+		}
+	}
 
 	return router
 }

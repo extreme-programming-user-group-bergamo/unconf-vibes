@@ -79,7 +79,10 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(authService)
 
-	router := api.NewRouter(authHandler)
+	userService := service.NewUserService(userRepository)
+	userHandler := handlers.NewUserHandler(userService)
+
+	router := api.NewRouter(authHandler, tokenService, userHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,

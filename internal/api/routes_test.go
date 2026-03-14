@@ -1,0 +1,237 @@
+package api
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/katurdays/unconf/internal/api/handlers"
+	"github.com/katurdays/unconf/internal/auth"
+	"github.com/katurdays/unconf/internal/models"
+	"github.com/katurdays/unconf/internal/repository/sqlite"
+	"github.com/katurdays/unconf/internal/service"
+)
+
+const testSymmetricKey = "0123456789abcdef0123456789abcdef"
+
+func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService, *sql.DB) {
+	t.Helper()
+
+	db, err := sqlite.NewConnectionManager(context.Background(), ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	require.NoError(t, sqlite.RunMigrations(db))
+
+	userRepo := sqlite.NewUserRepository(db)
+	refreshRepo := sqlite.NewRefreshSessionRepository(db)
+
+	tokenService, err := auth.NewTokenService(testSymmetricKey)
+	require.NoError(t, err)
+
+	authService, err := service.NewAuthService(
+		&stubDeviceFlowProvider{},
+		tokenService,
+		userRepo,
+		refreshRepo,
+		24*time.Hour,
+		7*24*time.Hour,
+	)
+	require.NoError(t, err)
+
+	userService := service.NewUserService(userRepo)
+	authHandler := handlers.NewAuthHandler(authService)
+	userHandler := handlers.NewUserHandler(userService)
+
+	router := NewRouter(authHandler, tokenService, userHandler)
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+
+	return srv, tokenService, db
+}
+
+func createTestUser(t *testing.T, db *sql.DB) *models.User {
+	t.Helper()
+
+	userRepo := sqlite.NewUserRepository(db)
+	user, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:       "test-github-123",
+		Email:          "test@example.com",
+		DisplayName:    "Test User",
+		PrivacySetting: "public",
+	})
+	require.NoError(t, err)
+
+	return user
+}
+
+func createTestSession(t *testing.T, db *sql.DB, userID int64, tokenService *auth.TokenService) (string, int64) {
+	t.Helper()
+
+	refreshRepo := sqlite.NewRefreshSessionRepository(db)
+	now := time.Now().UTC()
+
+	session, err := refreshRepo.Create(context.Background(), &models.RefreshSession{
+		UserID:        userID,
+		TokenHash:     "test-hash",
+		ExpiresAt:     now.Add(7 * 24 * time.Hour),
+		IssuedAt:      now,
+		LastAccessJTI: "test-jti",
+	})
+	require.NoError(t, err)
+
+	accessToken, err := tokenService.IssueAccessToken(context.Background(), auth.AccessTokenInput{
+		UserID:     userID,
+		SessionID:  session.ID,
+		Issuer:     "unconf-api",
+		Audience:   "unconf-cli",
+		NotBefore:  now,
+		IssuedAt:   now,
+		JTI:        "integration-test-jti",
+		ExpiryTime: now.Add(1 * time.Hour),
+	})
+	require.NoError(t, err)
+
+	return accessToken, session.ID
+}
+
+type stubDeviceFlowProvider struct{}
+
+func (s *stubDeviceFlowProvider) StartDeviceFlow(_ context.Context) (*auth.DeviceAuthorization, error) {
+	return &auth.DeviceAuthorization{}, nil
+}
+
+func (s *stubDeviceFlowProvider) ExchangeDeviceCode(_ context.Context, _ string) (*auth.OAuthAccessToken, error) {
+	return nil, nil
+}
+
+func (s *stubDeviceFlowProvider) FetchProfile(_ context.Context, _ string) (*auth.GitHubProfile, error) {
+	return nil, nil
+}
+
+func TestProtectedEndpoint_NoAuthHeader_Returns401(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/users/me")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestProtectedEndpoint_InvalidToken_Returns401(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/users/me", nil)
+	req.Header.Set("Authorization", "Bearer invalid-garbage-token")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestGetUsersMe_ValidToken_Returns200(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "Test User", body["display_name"])
+	assert.Equal(t, "test@example.com", body["email"])
+}
+
+func TestPutUsersMe_ValidToken_Returns200(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"display_name":"Updated Name","privacy_setting":"private"}`
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/users/me", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "Updated Name", result["display_name"])
+	assert.Equal(t, "private", result["privacy_setting"])
+}
+
+func TestPostAuthRevoke_ValidToken_Returns204(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/auth/revoke", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestPostAuthRevoke_ThenRevoke_SessionAlreadyRevoked(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	// First revoke should succeed
+	req1, _ := http.NewRequest(http.MethodPost, srv.URL+"/auth/revoke", nil)
+	req1.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp1, err := http.DefaultClient.Do(req1)
+	require.NoError(t, err)
+	defer resp1.Body.Close()
+	assert.Equal(t, http.StatusNoContent, resp1.StatusCode)
+
+	// Second revoke with same token should fail
+	req2, _ := http.NewRequest(http.MethodPost, srv.URL+"/auth/revoke", nil)
+	req2.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp2, err := http.DefaultClient.Do(req2)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
+}
+
+func TestHealthEndpoint_NoAuth_Returns200(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}

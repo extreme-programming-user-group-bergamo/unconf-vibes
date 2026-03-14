@@ -45,6 +45,10 @@ func (s *testAuthService) Refresh(ctx context.Context, refreshToken string) (*se
 	return s.refreshFn(ctx, refreshToken)
 }
 
+func (s *testAuthService) RevokeSession(_ context.Context, _ int64) error {
+	return nil
+}
+
 func TestAuthHandlerStartDeviceFlowSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
