@@ -19,6 +19,7 @@ type testAuthService struct {
 	startFn    func(ctx context.Context) (*auth.DeviceAuthorization, error)
 	exchangeFn func(ctx context.Context, deviceCode string) (*service.AuthResult, error)
 	refreshFn  func(ctx context.Context, refreshToken string) (*service.AuthResult, error)
+	revokeFn   func(ctx context.Context, sessionID int64) error
 }
 
 func (s *testAuthService) StartDeviceFlow(ctx context.Context) (*auth.DeviceAuthorization, error) {
@@ -45,7 +46,11 @@ func (s *testAuthService) Refresh(ctx context.Context, refreshToken string) (*se
 	return s.refreshFn(ctx, refreshToken)
 }
 
-func (s *testAuthService) RevokeSession(_ context.Context, _ int64) error {
+func (s *testAuthService) RevokeSession(ctx context.Context, sessionID int64) error {
+	if s.revokeFn != nil {
+		return s.revokeFn(ctx, sessionID)
+	}
+
 	return nil
 }
 
@@ -132,4 +137,95 @@ func TestAuthHandlerExchangeDeviceCodeRateLimitedOnRapidPolling(t *testing.T) {
 
 	assert.Equal(t, http.StatusTooManyRequests, w2.Code)
 	assert.Contains(t, w2.Body.String(), `"code":"rate_limited"`)
+}
+
+func setupRevokeRouter(handler *AuthHandler) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.POST("/auth/revoke", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		c.Set("session_id", int64(99))
+		handler.Revoke(c)
+	})
+
+	return router
+}
+
+func TestAuthHandler_Revoke_Success(t *testing.T) {
+	revokeCalled := false
+	handler := NewAuthHandler(&testAuthService{
+		revokeFn: func(_ context.Context, sessionID int64) error {
+			assert.Equal(t, int64(99), sessionID)
+			revokeCalled = true
+			return nil
+		},
+	})
+
+	router := setupRevokeRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.True(t, revokeCalled)
+}
+
+func TestAuthHandler_Revoke_SessionNotFound(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{
+		revokeFn: func(_ context.Context, _ int64) error {
+			return fmt.Errorf("failed to revoke session: %w", service.ErrSessionNotFound)
+		},
+	})
+
+	router := setupRevokeRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "session_not_found")
+}
+
+func TestAuthHandler_Revoke_InternalError(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{
+		revokeFn: func(_ context.Context, _ int64) error {
+			return fmt.Errorf("failed to revoke session: database error")
+		},
+	})
+
+	router := setupRevokeRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "internal_error")
+}
+
+func TestAuthHandler_Revoke_NoSessionInContext(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{})
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/revoke", handler.Revoke)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "Session ID not found")
+}
+
+func TestAuthHandler_Revoke_NilService(t *testing.T) {
+	handler := NewAuthHandler(nil)
+
+	router := setupRevokeRouter(handler)
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "service_unavailable")
 }

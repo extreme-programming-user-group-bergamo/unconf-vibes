@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/katurdays/unconf/internal/api/middleware"
 	"github.com/katurdays/unconf/internal/api/responses"
 	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/service"
@@ -172,15 +173,9 @@ func (h *AuthHandler) Revoke(c *gin.Context) {
 		return
 	}
 
-	sessionID, ok := c.Get("session_id")
+	sid, ok := middleware.GetSessionID(c)
 	if !ok {
 		responses.WriteError(c, "unauthorized", "Session ID not found in token", http.StatusUnauthorized)
-		return
-	}
-
-	sid, ok := sessionID.(int64)
-	if !ok {
-		responses.WriteError(c, "unauthorized", "Invalid session ID", http.StatusUnauthorized)
 		return
 	}
 

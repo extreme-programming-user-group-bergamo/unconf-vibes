@@ -1,0 +1,27 @@
+schema: 1
+story: "1.8"
+story_title: "Auth Middleware & User Profile Endpoints"
+gate: "PASS"
+status_reason: "All 7 acceptance criteria are fully implemented and tested. Code quality is high with proper DI, error wrapping, repository pattern adherence, and slog usage. One gap (missing Revoke handler unit tests) was remediated during review."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-03-14T02:10:00Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "TEST-001"
+    severity: medium
+    finding: "Revoke handler had no dedicated unit tests in auth_test.go; mock RevokeSession was a no-op"
+    suggested_action: "Fixed during review — 5 unit tests added covering success, session not found, internal error, missing context, nil service"
+  - id: "CODE-001"
+    severity: low
+    finding: "Revoke handler used c.Get('session_id') directly instead of middleware.GetSessionID(c), inconsistent with other handlers"
+    suggested_action: "Fixed during review — now uses middleware.GetSessionID(c) for consistency and type safety"
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 0, low: 0 }
+  recommendations:
+    must_fix: []
+    monitor:
+      - "Handler coverage (68.5%) could be improved further by adding tests for existing auth handlers' nil-service edge cases"
+      - "auth package coverage (36.3%) is low due to untested GitHubProvider HTTP code — acceptable for this story scope"
