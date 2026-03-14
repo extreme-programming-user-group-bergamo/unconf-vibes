@@ -235,3 +235,127 @@ func TestHealthEndpoint_NoAuth_Returns200(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
+
+func createTestSessionWithRefreshToken(t *testing.T, db *sql.DB, userID int64, rawRefreshToken string, expiresAt time.Time) int64 {
+	t.Helper()
+
+	refreshRepo := sqlite.NewRefreshSessionRepository(db)
+	now := time.Now().UTC()
+
+	session, err := refreshRepo.Create(context.Background(), &models.RefreshSession{
+		UserID:        userID,
+		TokenHash:     auth.HashRefreshToken(rawRefreshToken),
+		ExpiresAt:     expiresAt,
+		IssuedAt:      now,
+		LastAccessJTI: "test-refresh-jti",
+	})
+	require.NoError(t, err)
+
+	return session.ID
+}
+
+func TestPostAuthRefresh_ValidToken_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	rawRefreshToken := "valid-raw-refresh-token-for-test"
+	createTestSessionWithRefreshToken(t, db, user.ID, rawRefreshToken, time.Now().UTC().Add(7*24*time.Hour))
+
+	body := `{"refresh_token":"` + rawRefreshToken + `"}`
+	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.NotEmpty(t, result["access_token"])
+	assert.NotEmpty(t, result["refresh_token"])
+	assert.Equal(t, "Bearer", result["token_type"])
+	assert.NotNil(t, result["user"])
+
+	// Verify old refresh token no longer works (rotation invalidates it)
+	resp2, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
+
+	var errResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp2.Body).Decode(&errResp))
+	errObj := errResp["error"].(map[string]interface{})
+	assert.Equal(t, "revoked_refresh_token", errObj["code"])
+}
+
+func TestPostAuthRefresh_InvalidToken_Returns401(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	body := `{"refresh_token":"completely-invalid-token"}`
+	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	var errResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errResp))
+	errObj := errResp["error"].(map[string]interface{})
+	assert.Equal(t, "invalid_refresh_token", errObj["code"])
+}
+
+func TestPostAuthRefresh_ExpiredToken_Returns401(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	rawRefreshToken := "expired-raw-refresh-token-for-test"
+	// Create session with expiry in the past
+	createTestSessionWithRefreshToken(t, db, user.ID, rawRefreshToken, time.Now().UTC().Add(-1*time.Hour))
+
+	body := `{"refresh_token":"` + rawRefreshToken + `"}`
+	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	var errResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errResp))
+	errObj := errResp["error"].(map[string]interface{})
+	assert.Equal(t, "expired_refresh_token", errObj["code"])
+}
+
+func TestPostAuthRefresh_ThenUseNewAccessToken_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	user := createTestUser(t, db)
+	rawRefreshToken := "roundtrip-raw-refresh-token"
+	createTestSessionWithRefreshToken(t, db, user.ID, rawRefreshToken, time.Now().UTC().Add(7*24*time.Hour))
+
+	// Step 1: Refresh to get new access token
+	body := `{"refresh_token":"` + rawRefreshToken + `"}`
+	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	newAccessToken := result["access_token"].(string)
+	require.NotEmpty(t, newAccessToken)
+
+	// Step 2: Use new access token on protected endpoint
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+newAccessToken)
+
+	meResp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer meResp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, meResp.StatusCode)
+
+	var meBody map[string]interface{}
+	require.NoError(t, json.NewDecoder(meResp.Body).Decode(&meBody))
+	assert.Equal(t, "Test User", meBody["display_name"])
+}
