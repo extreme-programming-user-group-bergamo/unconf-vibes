@@ -41,9 +41,10 @@ func (s *ConferenceService) ListConferences(ctx context.Context) ([]*ConferenceR
 		return nil, fmt.Errorf("failed to list conferences: %w", err)
 	}
 
+	now := time.Now()
 	responses := make([]*ConferenceResponse, 0, len(conferences))
 	for _, conf := range conferences {
-		responses = append(responses, s.toResponse(conf))
+		responses = append(responses, toResponseAt(conf, now))
 	}
 
 	return responses, nil
@@ -60,7 +61,7 @@ func (s *ConferenceService) GetConference(ctx context.Context, slug string) (*Co
 		return nil, fmt.Errorf("failed to get conference: %w", err)
 	}
 
-	return s.toResponse(conf), nil
+	return toResponseAt(conf, time.Now()), nil
 }
 
 // DeriveStatus computes the conference status from its dates using the current time.
@@ -94,7 +95,7 @@ func truncateToDate(t time.Time) time.Time {
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-func (s *ConferenceService) toResponse(conf *models.Conference) *ConferenceResponse {
+func toResponseAt(conf *models.Conference, now time.Time) *ConferenceResponse {
 	return &ConferenceResponse{
 		ID:            conf.ID,
 		Slug:          conf.Slug,
@@ -105,6 +106,6 @@ func (s *ConferenceService) toResponse(conf *models.Conference) *ConferenceRespo
 		EndDate:       conf.EndDate.Format("2006-01-02"),
 		Capacity:      conf.Capacity,
 		AttendeeCount: 0,
-		Status:        s.DeriveStatus(conf),
+		Status:        DeriveStatusAt(conf, now),
 	}
 }
