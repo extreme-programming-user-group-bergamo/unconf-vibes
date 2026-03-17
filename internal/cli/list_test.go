@@ -303,3 +303,32 @@ func TestListCmd_SingleConference(t *testing.T) {
 	assert.Contains(t, output, "42")
 	assert.Contains(t, output, "upcoming")
 }
+
+func TestListCmd_CrossYearDateFormatting(t *testing.T) {
+	mock := &mockListClient{
+		listConferencesFn: func(_ context.Context) ([]client.ConferenceResponse, error) {
+			return []client.ConferenceResponse{
+				{
+					ID:            1,
+					Name:          "New Year Conf",
+					StartDate:     "2026-12-30",
+					EndDate:       "2027-01-02",
+					Status:        "upcoming",
+					Location:      "Berlin",
+					AttendeeCount: 75,
+				},
+			}, nil
+		},
+	}
+
+	cmd := newListCmd(mock)
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout.String(), "Dec 30, 2026 - Jan 02, 2027")
+}

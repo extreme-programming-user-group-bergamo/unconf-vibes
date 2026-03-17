@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
+	"sort"
 	"text/tabwriter"
 	"time"
 
 	"github.com/katurdays/unconf/internal/client"
 	"github.com/spf13/cobra"
 )
+
+const statusPast = "past"
 
 // ListClient defines the interface for fetching conferences.
 type ListClient interface {
@@ -48,17 +50,38 @@ func runList(cmd *cobra.Command, listClient ListClient, showAll bool) error {
 	// Filter out past conferences unless --all is set.
 	var filtered []client.ConferenceResponse
 	for _, c := range conferences {
-		if showAll || c.Status != "past" {
+		if showAll || c.Status != statusPast {
 			filtered = append(filtered, c)
 		}
 	}
 
-	// Sort by start_date ascending.
-	slices.SortFunc(filtered, func(a, b client.ConferenceResponse) int {
-		ta, _ := time.Parse("2006-01-02", a.StartDate)
-		tb, _ := time.Parse("2006-01-02", b.StartDate)
-		return ta.Compare(tb)
+	// Pre-parse start dates for sorting; invalid dates sort last.
+	type parsed struct {
+		conf client.ConferenceResponse
+		t    time.Time
+		ok   bool
+	}
+	items := make([]parsed, len(filtered))
+	for i, c := range filtered {
+		t, err := time.Parse("2006-01-02", c.StartDate)
+		items[i] = parsed{conf: c, t: t, ok: err == nil}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if !items[i].ok && !items[j].ok {
+			return false
+		}
+		if !items[i].ok {
+			return false // invalid dates last
+		}
+		if !items[j].ok {
+			return true
+		}
+		return items[i].t.Before(items[j].t)
 	})
+	filtered = filtered[:0]
+	for _, p := range items {
+		filtered = append(filtered, p.conf)
+	}
 
 	if len(filtered) == 0 {
 		if showAll {
@@ -89,6 +112,10 @@ func formatDateRange(startStr, endStr string) string {
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
 		return startStr + " - " + endStr
+	}
+
+	if start.Year() != end.Year() {
+		return start.Format("Jan 02, 2006") + " - " + end.Format("Jan 02, 2006")
 	}
 
 	return start.Format("Jan 02") + " - " + end.Format("Jan 02, 2006")
