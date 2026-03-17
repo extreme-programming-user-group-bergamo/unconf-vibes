@@ -55,6 +55,7 @@ func TestConferenceRepository_Create_DuplicateSlug(t *testing.T) {
 
 	_, err = repo.Create(context.Background(), newTestConference("dup-slug"))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrConferenceExists)
 }
 
 func TestConferenceRepository_GetBySlug_Success(t *testing.T) {

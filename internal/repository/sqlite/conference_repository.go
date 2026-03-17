@@ -38,7 +38,7 @@ func (r *ConferenceRepository) Create(ctx context.Context, conf *models.Conferen
 	))
 	if err != nil {
 		if isConferenceUniqueConstraintError(err) {
-			return nil, fmt.Errorf("failed to create conference: %w", repository.ErrConferenceNotFound)
+			return nil, repository.ErrConferenceExists
 		}
 
 		return nil, fmt.Errorf("failed to create conference: %w", err)

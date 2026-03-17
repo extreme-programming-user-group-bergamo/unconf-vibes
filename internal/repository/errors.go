@@ -8,4 +8,5 @@ var (
 	ErrDatabaseInit           = errors.New("failed to initialize database")
 	ErrRefreshSessionNotFound = errors.New("refresh session not found")
 	ErrConferenceNotFound     = errors.New("conference not found")
+	ErrConferenceExists       = errors.New("conference already exists")
 )
