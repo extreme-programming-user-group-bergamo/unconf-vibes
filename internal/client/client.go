@@ -198,6 +198,45 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 // ErrUnauthorized is returned when the API responds with 401.
 var ErrUnauthorized = errors.New("unauthorized")
 
+// ConferenceResponse represents a conference returned by the API.
+type ConferenceResponse struct {
+	ID            int64  `json:"id"`
+	Slug          string `json:"slug"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Location      string `json:"location"`
+	StartDate     string `json:"start_date"`
+	EndDate       string `json:"end_date"`
+	Capacity      int    `json:"capacity"`
+	AttendeeCount int    `json:"attendee_count"`
+	Status        string `json:"status"`
+}
+
+// ListConferences fetches all conferences via GET /conferences.
+func (c *Client) ListConferences(ctx context.Context) ([]ConferenceResponse, error) {
+	var result []ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Get("/conferences")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list conferences: %w", err)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to list conferences: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	if result == nil {
+		result = []ConferenceResponse{}
+	}
+
+	return result, nil
+}
+
 // ErrSessionExpired is returned when the access token is expired and the refresh token
 // is also invalid/expired/revoked, requiring a full re-login.
 var ErrSessionExpired = errors.New("session expired: please run 'unconf login' to re-authenticate")

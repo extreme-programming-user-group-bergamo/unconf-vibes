@@ -96,6 +96,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newLoginCmd(apiClient, store))
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 	rootCmd.AddCommand(newStatusCmd(authClient))
+	rootCmd.AddCommand(newListCmd(apiClient))
 
 	return rootCmd
 }

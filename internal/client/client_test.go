@@ -80,7 +80,8 @@ func TestExchangeDeviceCode_Success(t *testing.T) {
 		assert.Equal(t, "/auth/token", r.URL.Path)
 
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
 		assert.Equal(t, "device-123", body["device_code"])
 
 		w.Header().Set("Content-Type", "application/json")
@@ -214,7 +215,8 @@ func TestRefreshToken_Success(t *testing.T) {
 		assert.Equal(t, "/auth/refresh", r.URL.Path)
 
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
 		assert.Equal(t, "old-refresh-token", body["refresh_token"])
 
 		w.Header().Set("Content-Type", "application/json")
@@ -358,4 +360,98 @@ func TestGetMe_NetworkError(t *testing.T) {
 	assert.Nil(t, user)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get user profile")
+}
+
+func TestListConferences_Success(t *testing.T) {
+	expected := []ConferenceResponse{
+		{
+			ID:            1,
+			Slug:          "gophercon-2026",
+			Name:          "GopherCon 2026",
+			Description:   "Go conference",
+			Location:      "Denver, CO",
+			StartDate:     "2026-06-15",
+			EndDate:       "2026-06-18",
+			Capacity:      500,
+			AttendeeCount: 120,
+			Status:        "upcoming",
+		},
+		{
+			ID:            2,
+			Slug:          "rustconf-2026",
+			Name:          "RustConf 2026",
+			Description:   "Rust conference",
+			Location:      "Portland, OR",
+			StartDate:     "2026-08-01",
+			EndDate:       "2026-08-03",
+			Capacity:      300,
+			AttendeeCount: 50,
+			Status:        "upcoming",
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/conferences", r.URL.Path)
+		assert.Empty(t, r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, conferences, 2)
+	assert.Equal(t, "GopherCon 2026", conferences[0].Name)
+	assert.Equal(t, "RustConf 2026", conferences[1].Name)
+	assert.Equal(t, 120, conferences[0].AttendeeCount)
+}
+
+func TestListConferences_EmptyArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, conferences)
+	assert.Empty(t, conferences)
+}
+
+func TestListConferences_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	assert.Nil(t, conferences)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to list conferences")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestListConferences_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	conferences, err := c.ListConferences(context.Background())
+
+	assert.Nil(t, conferences)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to list conferences")
 }
