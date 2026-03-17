@@ -83,8 +83,10 @@ func (s *ConferenceService) DeriveStatus(conf *models.Conference) string {
 }
 
 // truncateToDate normalizes a time to midnight UTC for date-only comparisons.
+// Converts to UTC first to avoid timezone-dependent off-by-one errors.
 func truncateToDate(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	u := t.UTC()
+	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func (s *ConferenceService) toResponse(conf *models.Conference) *ConferenceResponse {

@@ -31,7 +31,7 @@ func (r *ConferenceRepository) Create(ctx context.Context, conf *models.Conferen
 		RETURNING id, slug, name, description, location, start_date, end_date, capacity, hotel_email, created_at
 	`
 
-	created, err := scanConferenceRow(r.db.QueryRowContext(ctx, query,
+	created, err := scanConference(r.db.QueryRowContext(ctx, query,
 		conf.Slug, conf.Name, conf.Description, conf.Location,
 		conf.StartDate, conf.EndDate,
 		conf.Capacity, conf.HotelEmail,
@@ -55,7 +55,7 @@ func (r *ConferenceRepository) GetBySlug(ctx context.Context, slug string) (*mod
 		WHERE slug = ?
 	`
 
-	conf, err := scanConferenceRow(r.db.QueryRowContext(ctx, query, slug))
+	conf, err := scanConference(r.db.QueryRowContext(ctx, query, slug))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, repository.ErrConferenceNotFound
@@ -82,7 +82,7 @@ func (r *ConferenceRepository) List(ctx context.Context) ([]*models.Conference, 
 
 	conferences := make([]*models.Conference, 0)
 	for rows.Next() {
-		conf, err := scanConferenceRows(rows)
+		conf, err := scanConference(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan conference row: %w", err)
 		}
@@ -98,39 +98,16 @@ func (r *ConferenceRepository) List(ctx context.Context) ([]*models.Conference, 
 	return conferences, nil
 }
 
-func scanConferenceRow(row *sql.Row) (*models.Conference, error) {
-	var conf models.Conference
-	var description sql.NullString
-	var hotelEmail sql.NullString
-
-	err := row.Scan(
-		&conf.ID,
-		&conf.Slug,
-		&conf.Name,
-		&description,
-		&conf.Location,
-		&conf.StartDate,
-		&conf.EndDate,
-		&conf.Capacity,
-		&hotelEmail,
-		&conf.CreatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	conf.Description = description.String
-	conf.HotelEmail = hotelEmail.String
-
-	return &conf, nil
+type scanner interface {
+	Scan(dest ...any) error
 }
 
-func scanConferenceRows(rows *sql.Rows) (*models.Conference, error) {
+func scanConference(s scanner) (*models.Conference, error) {
 	var conf models.Conference
 	var description sql.NullString
 	var hotelEmail sql.NullString
 
-	err := rows.Scan(
+	err := s.Scan(
 		&conf.ID,
 		&conf.Slug,
 		&conf.Name,
