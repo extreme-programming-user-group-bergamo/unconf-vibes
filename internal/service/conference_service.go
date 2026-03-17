@@ -64,17 +64,27 @@ func (s *ConferenceService) GetConference(ctx context.Context, slug string) (*Co
 }
 
 // DeriveStatus computes the conference status from its dates.
+// Dates are compared as date-only (normalized to midnight) so that
+// end_date is treated as inclusive (the conference is "active" through the entire end date).
 func (s *ConferenceService) DeriveStatus(conf *models.Conference) string {
-	now := time.Now()
-	if conf.StartDate.After(now) {
+	today := truncateToDate(time.Now())
+	startDate := truncateToDate(conf.StartDate)
+	endDate := truncateToDate(conf.EndDate)
+
+	if startDate.After(today) {
 		return string(models.ConferenceStatusUpcoming)
 	}
 
-	if conf.EndDate.Before(now) {
+	if endDate.Before(today) {
 		return string(models.ConferenceStatusPast)
 	}
 
 	return string(models.ConferenceStatusActive)
+}
+
+// truncateToDate normalizes a time to midnight UTC for date-only comparisons.
+func truncateToDate(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func (s *ConferenceService) toResponse(conf *models.Conference) *ConferenceResponse {

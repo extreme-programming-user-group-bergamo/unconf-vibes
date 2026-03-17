@@ -196,3 +196,25 @@ func TestConferenceService_DeriveStatus_Past(t *testing.T) {
 	status := svc.DeriveStatus(conf)
 	assert.Equal(t, "past", status)
 }
+
+func TestConferenceService_DeriveStatus_ActiveOnEndDate(t *testing.T) {
+	svc := NewConferenceService(nil)
+	conf := &models.Conference{
+		StartDate: time.Now().Add(-2 * 24 * time.Hour),
+		EndDate:   time.Now(), // end date is today — should still be "active"
+	}
+
+	status := svc.DeriveStatus(conf)
+	assert.Equal(t, "active", status)
+}
+
+func TestConferenceService_DeriveStatus_ActiveOnStartDate(t *testing.T) {
+	svc := NewConferenceService(nil)
+	conf := &models.Conference{
+		StartDate: time.Now(), // start date is today — should be "active"
+		EndDate:   time.Now().Add(3 * 24 * time.Hour),
+	}
+
+	status := svc.DeriveStatus(conf)
+	assert.Equal(t, "active", status)
+}
