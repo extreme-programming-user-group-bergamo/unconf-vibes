@@ -174,47 +174,56 @@ func TestConferenceService_GetConference_RepoError(t *testing.T) {
 }
 
 func TestConferenceService_DeriveStatus_Upcoming(t *testing.T) {
-	svc := NewConferenceService(nil)
-	conf := upcomingConference()
+	now := time.Now().UTC()
+	conf := &models.Conference{
+		StartDate: now.Add(30 * 24 * time.Hour),
+		EndDate:   now.Add(33 * 24 * time.Hour),
+	}
 
-	status := svc.DeriveStatus(conf)
+	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "upcoming", status)
 }
 
 func TestConferenceService_DeriveStatus_Active(t *testing.T) {
-	svc := NewConferenceService(nil)
-	conf := activeConference()
+	now := time.Now().UTC()
+	conf := &models.Conference{
+		StartDate: now.Add(-1 * 24 * time.Hour),
+		EndDate:   now.Add(2 * 24 * time.Hour),
+	}
 
-	status := svc.DeriveStatus(conf)
+	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "active", status)
 }
 
 func TestConferenceService_DeriveStatus_Past(t *testing.T) {
-	svc := NewConferenceService(nil)
-	conf := pastConference()
+	now := time.Now().UTC()
+	conf := &models.Conference{
+		StartDate: now.Add(-30 * 24 * time.Hour),
+		EndDate:   now.Add(-27 * 24 * time.Hour),
+	}
 
-	status := svc.DeriveStatus(conf)
+	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "past", status)
 }
 
 func TestConferenceService_DeriveStatus_ActiveOnEndDate(t *testing.T) {
-	svc := NewConferenceService(nil)
+	now := time.Now().UTC()
 	conf := &models.Conference{
-		StartDate: time.Now().Add(-2 * 24 * time.Hour),
-		EndDate:   time.Now(), // end date is today — should still be "active"
+		StartDate: now.Add(-2 * 24 * time.Hour),
+		EndDate:   now, // end date is today — should still be "active"
 	}
 
-	status := svc.DeriveStatus(conf)
+	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "active", status)
 }
 
 func TestConferenceService_DeriveStatus_ActiveOnStartDate(t *testing.T) {
-	svc := NewConferenceService(nil)
+	now := time.Now().UTC()
 	conf := &models.Conference{
-		StartDate: time.Now(), // start date is today — should be "active"
-		EndDate:   time.Now().Add(3 * 24 * time.Hour),
+		StartDate: now, // start date is today — should be "active"
+		EndDate:   now.Add(3 * 24 * time.Hour),
 	}
 
-	status := svc.DeriveStatus(conf)
+	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "active", status)
 }
