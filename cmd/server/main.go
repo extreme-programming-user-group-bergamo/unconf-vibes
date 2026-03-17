@@ -82,7 +82,11 @@ func main() {
 	userService := service.NewUserService(userRepository)
 	userHandler := handlers.NewUserHandler(userService)
 
-	router := api.NewRouter(authHandler, tokenService, userHandler)
+	conferenceRepo := sqlite.NewConferenceRepository(db)
+	conferenceService := service.NewConferenceService(conferenceRepo)
+	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
+
+	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,

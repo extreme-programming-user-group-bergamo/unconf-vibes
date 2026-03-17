@@ -52,7 +52,11 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	authHandler := handlers.NewAuthHandler(authService)
 	userHandler := handlers.NewUserHandler(userService)
 
-	router := NewRouter(authHandler, tokenService, userHandler)
+	conferenceRepo := sqlite.NewConferenceRepository(db)
+	conferenceService := service.NewConferenceService(conferenceRepo)
+	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
+
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -358,4 +362,140 @@ func TestPostAuthRefresh_ThenUseNewAccessToken_Returns200(t *testing.T) {
 	var meBody map[string]interface{}
 	require.NoError(t, json.NewDecoder(meResp.Body).Decode(&meBody))
 	assert.Equal(t, "Test User", meBody["display_name"])
+}
+
+func createTestConference(t *testing.T, db *sql.DB, slug, name string, startDate, endDate time.Time) {
+	t.Helper()
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	_, err := confRepo.Create(context.Background(), &models.Conference{
+		Slug:        slug,
+		Name:        name,
+		Description: "Test conference description",
+		Location:    "Test City",
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Capacity:    100,
+	})
+	require.NoError(t, err)
+}
+
+func TestGetConferences_Empty_Returns200(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/conferences")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Empty(t, body)
+}
+
+func TestGetConferences_WithData_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-a", "Conference A",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	createTestConference(t, db, "conf-b", "Conference B",
+		time.Now().Add(-30*24*time.Hour), time.Now().Add(-27*24*time.Hour))
+
+	resp, err := http.Get(srv.URL + "/conferences")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 2)
+
+	// Ordered by start_date DESC — upcoming first
+	assert.Equal(t, "conf-a", body[0]["slug"])
+	assert.Equal(t, "upcoming", body[0]["status"])
+	assert.Equal(t, float64(0), body[0]["attendee_count"])
+	assert.Equal(t, "conf-b", body[1]["slug"])
+	assert.Equal(t, "past", body[1]["status"])
+}
+
+func TestGetConferenceBySlug_Found_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "socrates-26", "SoCraTes 2026",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	resp, err := http.Get(srv.URL + "/conferences/socrates-26")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "socrates-26", body["slug"])
+	assert.Equal(t, "SoCraTes 2026", body["name"])
+	assert.Equal(t, "upcoming", body["status"])
+	assert.Equal(t, float64(0), body["attendee_count"])
+}
+
+func TestGetConferenceBySlug_NotFound_Returns404(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/conferences/nonexistent")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	errObj := body["error"].(map[string]interface{})
+	assert.Equal(t, "not_found", errObj["code"])
+}
+
+func TestGetConferences_NoAuthRequired(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	// No Authorization header — should still return 200
+	resp, err := http.Get(srv.URL + "/conferences")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestGetConferences_StatusDerived(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	// Past conference
+	createTestConference(t, db, "past-conf", "Past Conf",
+		time.Now().Add(-60*24*time.Hour), time.Now().Add(-57*24*time.Hour))
+	// Active conference
+	createTestConference(t, db, "active-conf", "Active Conf",
+		time.Now().Add(-1*24*time.Hour), time.Now().Add(2*24*time.Hour))
+	// Upcoming conference
+	createTestConference(t, db, "upcoming-conf", "Upcoming Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	resp, err := http.Get(srv.URL + "/conferences")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 3)
+
+	// Collect statuses by slug
+	statuses := make(map[string]string)
+	for _, c := range body {
+		statuses[c["slug"].(string)] = c["status"].(string)
+	}
+
+	assert.Equal(t, "past", statuses["past-conf"])
+	assert.Equal(t, "active", statuses["active-conf"])
+	assert.Equal(t, "upcoming", statuses["upcoming-conf"])
 }
