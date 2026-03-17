@@ -7,5 +7,9 @@
     "cursor-global": true,
     "cursor-workspace": true
   },
-  "github.copilot.chat.agent.autoFix": true
+  "github.copilot.chat.agent.autoFix": true,
+  "chat.tools.terminal.autoApprove": {
+    "./bin/unconf": true,
+    "go test": true
+  }
 }

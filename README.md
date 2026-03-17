@@ -1,74 +1,173 @@
-# UNCONF CLI - Spec-Driven Development Experiment
+# UNCONF CLI
 
-> "Choose your room, choose your roommate, focus on the conference."
+UNCONF is a Go-based CLI + TUI application for unconference registration, room selection, and booking workflows.
 
-Questo repository ospita lo sviluppo di **UNCONF**, una CLI Application reale, utilizzata come base di partenza per sperimentare e validare la metodologia **Spec-Driven Development (SDD)**.
+## Project Overview
 
-L'obiettivo non è solo scrivere codice, ma derivarlo rigorosamente da documenti di specifica, piani e task definiti *prima* dell'implementazione.
+- CLI-first experience with a REST backend
+- Tech stack centered on Go 1.24+, Gin, Cobra, Bubble Tea, and SQLite
+- Architecture and development standards are documented under `docs/`
 
-## 🧪 Il Metodo: Spec-Driven Development (SDD)
-
-In questo progetto, nessuna riga di codice viene scritta senza una specifica approvata. Il flusso di lavoro segue rigorosamente questi step:
-
-1.  **Specifica**: Definizione dei requisiti e user stories nella cartella `specs/`.
-2.  **Pianificazione**: Creazione di un piano tecnico e suddivisione in task atomici.
-3.  **TDD (Test-Driven Development)**: Scrittura dei test basati sui criteri di accettazione delle spec.
-4.  **Implementazione**: Scrittura del codice per soddisfare i test.
-
-Troverai la "memoria" e le regole del progetto in `.specify/` e le specifiche delle feature in `specs/`.
-
----
-
-## 🚀 L'Applicazione: UNCONF
-
-**UNCONF** è uno strumento da riga di comando (CLI) con interfaccia grafica testuale (TUI) pensato per le conferenze developer "Open Space" (come *SoCraTes Italia* o *Polenta e Deploy*).
-
-Risolve il problema della gestione manuale delle prenotazioni alberghiere, trasformando la burocrazia (email, fogli Excel) in un'esperienza "nerd" e social.
-
-### Funzionalità Chiave
-*   **Velocità**: Registrazione e prenotazione hotel in < 3 minuti.
-*   **TUI Interattiva**: Visualizzazione grafica delle stanze nel terminale (stile "Crush").
-*   **Social Discovery**: Vedi chi ha prenotato in quale stanza e scegli i tuoi roommate.
-*   **Privacy-first**: Controllo granulare sulla visibilità del proprio nome.
-
----
-
-## 🛠 Tech Stack
-
-Il progetto è scritto interamente in **Go (Golang)** v1.21+.
-
-*   **CLI Framework**: [Cobra](https://github.com/spf13/cobra) per la gestione dei comandi.
-*   **TUI & Styling**: Stack [Charm Bracelet](https://charm.sh/) (Bubble Tea, Lip Gloss, Bubbles) per interfacce testuali ricche e interattive.
-*   **Configurazione**: [Viper](https://github.com/spf13/viper).
-*   **Backend**: Gin Gonic + SQLite (containerizzato con Docker).
-
----
-
-## 🏗 Architettura
-
-L'architettura segue i principi della **Hexagonal Architecture (Ports and Adapters)** e impone regole ferree definite nella "Costituzione" del progetto:
-
-1.  **Repository Pattern (Non-Negoziabile)**: L'accesso ai dati è astratto tramite interfacce. Nessuna query SQL risiede nella business logic. Questo prepara il sistema a future migrazioni (es. da SQLite a PostgreSQL).
-2.  **CLI-First Design**: L'interfaccia segue le convenzioni Unix. Utilizza un sistema di **contesto** (simile a `kubectl` o `git`) tramite il comando `checkout` per mantenere lo stato della conferenza attiva.
-3.  **Separazione CLI/Backend**:
-    *   La **CLI** agisce come un client "stupido" ma bello, che comunica via REST API.
-    *   Il **Backend** gestisce la logica di business, la persistenza e l'invio delle email.
-4.  **Testing Strategy**:
-    *   **Unit Test**: Per la logica interna.
-    *   **Contract Test**: Per garantire che CLI e Backend si parlino correttamente (Pact).
-    *   **Integration Test**: Per i comandi CLI end-to-end.
-
-### Struttura Comandi
-
-L'albero dei comandi riflette il flusso utente:
+## Quick Start
 
 ```bash
-unconf
-├── config       # Setup utente locale
-├── list         # Elenco conferenze
-├── checkout     # Selezione contesto conferenza
-├── rooms        # TUI interattiva selezione stanze
-├── book         # Wizard di prenotazione
-├── status       # Verifica stato prenotazione
-└── cancel       # Cancellazione
+make build
+./bin/unconf
 ```
+
+Planned command examples:
+
+```bash
+unconf login
+unconf help
+```
+
+## Development Setup
+
+Prerequisites:
+
+- Go 1.24+
+- SQLite 3.40+
+- Make
+- golangci-lint v2.x
+
+## Building
+
+```bash
+make build
+```
+
+This produces:
+
+- `bin/unconf`
+- `bin/unconf-server`
+
+## Testing
+
+```bash
+make test
+```
+
+Manual API check:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+## API Server
+
+Start API server:
+
+```bash
+make run-server
+```
+
+- Default port: `8080`
+- Health endpoint: `http://localhost:8080/health`
+- API endpoint reference: `docs/architecture/5-api-specification.md`
+
+## Database
+
+- Default SQLite file: `.unconf.db`
+- Override with environment variable: `UNCONF_DB_PATH`
+- Database initialization + migrations run automatically on CLI and server startup
+
+### Database Migration
+
+Run migrations locally:
+
+```bash
+make migrate-up
+```
+
+Rollback migrations:
+
+```bash
+make migrate-down
+```
+
+Recreate schema from scratch:
+
+```bash
+make migrate-fresh
+```
+
+Migration files live in `migrations/` and follow `{version}_{name}.up.sql` / `{version}_{name}.down.sql`.
+
+golang-migrate docs: https://github.com/golang-migrate/migrate
+
+## Docker
+
+Build image:
+
+```bash
+docker build -t unconf:latest .
+```
+
+Run container:
+
+```bash
+docker volume create unconf-data
+docker run --rm -p 8080:8080 \
+	-e UNCONF_DB_PATH=/data/unconf.db \
+	-v unconf-data:/data \
+	unconf:latest
+```
+
+This keeps SQLite data across container restarts.
+
+## Linting
+
+```bash
+make lint
+```
+
+## CI/CD
+
+GitHub Actions workflows are defined in `.github/workflows/`:
+
+- `ci.yaml` runs on `pull_request` and on push to `main`
+- `release.yaml` runs on push of tags matching `v*`, builds all release targets, and publishes a GitHub Release
+- `deploy.yaml` runs on push of tags matching `v*` (placeholder)
+
+Run the same quality gates locally:
+
+```bash
+make test
+make lint
+make build
+```
+
+Create a release tag to trigger the release workflow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Local release smoke test:
+
+```bash
+make release-local
+```
+
+Note: SQLite uses `github.com/mattn/go-sqlite3` (CGO), so `make release-local` runs a single-target GoReleaser build to avoid cross-compilation toolchain issues.
+
+## Project Structure
+
+Project structure reference: `docs/architecture/11-unified-project-structure.md`
+
+## Documentation
+
+- Architecture docs: `docs/architecture/`
+- Product docs: `docs/prd/`
+
+## Contributing
+
+Follow coding standards in `docs/architecture/coding-standards.md`.
