@@ -1,0 +1,49 @@
+schema: 1
+story: "2.3"
+story_title: "CLI Info Command"
+gate: PASS
+status_reason: "Clean implementation following established CLI patterns. All 6 ACs met (AC3 placeholder, AC4 deferred per scope). 11 new tests pass with full regression. One minor security improvement applied during review (url.PathEscape)."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-03-18T23:40:00Z"
+
+top_issues: []
+waiver: { active: false }
+
+quality_score: 95
+expires: "2026-04-01T00:00:00Z"
+
+evidence:
+  tests_reviewed: 11
+  risks_identified: 1
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "URL path injection mitigated via url.PathEscape. No auth bypass. CLI-only output."
+  performance:
+    status: PASS
+    notes: "Single GET request, small JSON payload. No concerns."
+  reliability:
+    status: PASS
+    notes: "Proper error handling with sentinel errors, context propagation, graceful date parse fallback."
+  maintainability:
+    status: PASS
+    notes: "Interface-based DI, reuses shared formatDateRange, rooms placeholder ready for Epic 3."
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 0, low: 1 }
+  recommendations:
+    must_fix: []
+    monitor:
+      - "Apply url.PathEscape to future client methods accepting user-controlled path segments"
+
+recommendations:
+  immediate: []
+  future:
+    - action: "Extract formatDateRange to shared utility if a third consumer appears"
+      refs: ["internal/cli/list.go"]
+    - action: "Add url.PathEscape pattern to future client methods with user path input"
+      refs: ["internal/client/client.go"]

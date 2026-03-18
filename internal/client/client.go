@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -249,7 +250,7 @@ func (c *Client) GetConference(ctx context.Context, slug string) (*ConferenceRes
 		SetContext(ctx).
 		SetResult(&result).
 		SetError(&errEnvelope).
-		Get("/conferences/" + slug)
+		Get("/conferences/" + url.PathEscape(slug))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conference: %w", err)
 	}
