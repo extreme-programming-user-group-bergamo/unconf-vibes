@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 const contextFileName = "context"
 
+var validSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*$`)
+
 // ContextManager manages the active conference context stored on disk.
+//
+// Context is stored at ~/.unconf/context as a plain-text file containing the
+// active conference slug. The directory is created with 0700 permissions and
+// the file with 0600 permissions.
 type ContextManager struct {
 	contextDir string
 }
@@ -37,11 +44,20 @@ func (cm *ContextManager) GetActiveConference() (string, error) {
 
 // SetActiveConference saves the given slug as the active conference context.
 func (cm *ContextManager) SetActiveConference(slug string) error {
+	if !validSlug.MatchString(slug) {
+		return fmt.Errorf("invalid conference slug %q: must be lowercase alphanumeric with hyphens", slug)
+	}
+
 	if err := os.MkdirAll(cm.contextDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create context directory: %w", err)
+	}
+
+	tmpPath := filepath.Join(cm.contextDir, ".context.tmp")
+	if err := os.WriteFile(tmpPath, []byte(slug+"\n"), 0o600); err != nil {
 		return fmt.Errorf("failed to save active conference: %w", err)
 	}
 
-	if err := os.WriteFile(cm.GetContextFilePath(), []byte(slug+"\n"), 0o600); err != nil {
+	if err := os.Rename(tmpPath, cm.GetContextFilePath()); err != nil {
 		return fmt.Errorf("failed to save active conference: %w", err)
 	}
 
