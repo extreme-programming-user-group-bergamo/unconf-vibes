@@ -16,16 +16,46 @@ type InfoClient interface {
 	GetConference(ctx context.Context, slug string) (*client.ConferenceResponse, error)
 }
 
-func newInfoCmd(infoClient InfoClient) *cobra.Command {
+// InfoContextStore defines the interface for reading active conference context.
+type InfoContextStore interface {
+	GetActiveConference() (string, error)
+}
+
+func newInfoCmd(infoClient InfoClient, ctxStore InfoContextStore) *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <conference-slug>",
+		Use:   "info [conference-slug]",
 		Short: "Show detailed conference information",
-		Long:  "Displays detailed information about a specific conference including dates, location, capacity, and room availability.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Displays detailed information about a specific conference including dates, location, capacity, and room availability.\nIf no slug is provided, uses the active conference context set via 'unconf checkout'.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInfo(cmd, infoClient, args[0])
+			slug, err := resolveInfoSlug(cmd, ctxStore, args)
+			if err != nil {
+				return err
+			}
+			if slug == "" {
+				return nil
+			}
+			return runInfo(cmd, infoClient, slug)
 		},
 	}
+}
+
+func resolveInfoSlug(cmd *cobra.Command, ctxStore InfoContextStore, args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
+	}
+
+	slug, err := ctxStore.GetActiveConference()
+	if err != nil {
+		return "", fmt.Errorf("failed to read conference context: %w", err)
+	}
+
+	if slug == "" {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "No conference specified. Usage: unconf info <slug> or set context with 'unconf checkout <slug>'")
+		return "", nil
+	}
+
+	return slug, nil
 }
 
 func runInfo(cmd *cobra.Command, infoClient InfoClient, slug string) error {
