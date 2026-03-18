@@ -455,3 +455,88 @@ func TestListConferences_NetworkError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to list conferences")
 }
+
+func TestGetConference_Success(t *testing.T) {
+	expected := ConferenceResponse{
+		ID:            1,
+		Slug:          "socrates-26",
+		Name:          "SoCraTes 2026",
+		Description:   "Software Craftsmanship and Testing Conference",
+		Location:      "Saarbrücken, Germany",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-10",
+		Capacity:      200,
+		AttendeeCount: 0,
+		Status:        "upcoming",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/conferences/socrates-26", r.URL.Path)
+		assert.Empty(t, r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	require.NoError(t, err)
+	assert.Equal(t, "SoCraTes 2026", conf.Name)
+	assert.Equal(t, "socrates-26", conf.Slug)
+	assert.Equal(t, 200, conf.Capacity)
+	assert.Equal(t, 0, conf.AttendeeCount)
+}
+
+func TestGetConference_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "not_found",
+				"message": "Conference not found",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "nonexistent")
+
+	assert.Nil(t, conf)
+	assert.ErrorIs(t, err, ErrConferenceNotFound)
+}
+
+func TestGetConference_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	assert.Nil(t, conf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get conference")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGetConference_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	assert.Nil(t, conf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get conference")
+}
