@@ -198,6 +198,9 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 // ErrUnauthorized is returned when the API responds with 401.
 var ErrUnauthorized = errors.New("unauthorized")
 
+// ErrConferenceNotFound is returned when the requested conference slug does not exist.
+var ErrConferenceNotFound = errors.New("conference not found")
+
 // ConferenceResponse represents a conference returned by the API.
 type ConferenceResponse struct {
 	ID            int64  `json:"id"`
@@ -235,6 +238,31 @@ func (c *Client) ListConferences(ctx context.Context) ([]ConferenceResponse, err
 	}
 
 	return result, nil
+}
+
+// GetConference fetches a single conference by slug via GET /conferences/{slug}.
+func (c *Client) GetConference(ctx context.Context, slug string) (*ConferenceResponse, error) {
+	var result ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Get("/conferences/" + slug)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conference: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusNotFound {
+		return nil, ErrConferenceNotFound
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to get conference: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
 }
 
 // ErrSessionExpired is returned when the access token is expired and the refresh token
