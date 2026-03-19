@@ -83,14 +83,15 @@ func runConfigUpdate(cmd *cobra.Command, configClient ConfigClient, displayName 
 		input.DisplayName = &displayName
 	}
 	if cmd.Flags().Changed("privacy") {
+		if privacy != "public" && privacy != "private" {
+			_, _ = fmt.Fprintln(errOut, "Invalid privacy setting. Use 'public' or 'private'.")
+			return fmt.Errorf("failed to update profile: invalid privacy setting %q", privacy)
+		}
 		input.PrivacySetting = &privacy
 	}
 
 	_, err := configClient.UpdateMe(ctx, input)
 	if err != nil {
-		if strings.Contains(err.Error(), "invalid_privacy_setting") || strings.Contains(err.Error(), "invalid privacy") {
-			_, _ = fmt.Fprintln(errOut, "Invalid privacy setting. Use 'public' or 'private'.")
-		}
 		return handleConfigAuthError(errOut, "failed to update profile", err)
 	}
 

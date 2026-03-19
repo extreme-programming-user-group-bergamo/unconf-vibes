@@ -202,7 +202,8 @@ func TestConfigCmd_UpdateBothFlags(t *testing.T) {
 func TestConfigCmd_UpdateInvalidPrivacy(t *testing.T) {
 	mock := &mockConfigClient{
 		updateMeFn: func(_ context.Context, _ client.UpdateProfileRequest) (*client.UserResponse, error) {
-			return nil, fmt.Errorf("failed to update user profile: invalid_privacy_setting (HTTP 400)")
+			t.Fatal("UpdateMe should not be called for invalid privacy setting")
+			return nil, nil
 		},
 	}
 
@@ -215,6 +216,7 @@ func TestConfigCmd_UpdateInvalidPrivacy(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, stderr.String(), "Invalid privacy setting")
+	assert.Contains(t, err.Error(), "invalid privacy setting")
 }
 
 func TestConfigCmd_Update_NotAuthenticated(t *testing.T) {
