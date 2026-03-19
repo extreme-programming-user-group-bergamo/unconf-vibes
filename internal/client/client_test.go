@@ -25,7 +25,7 @@ func TestStartDeviceFlow_Success(t *testing.T) {
 		assert.Equal(t, "/auth/device", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -44,7 +44,7 @@ func TestStartDeviceFlow_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "service_unavailable",
 				"message": "Auth service not configured",
@@ -85,7 +85,7 @@ func TestExchangeDeviceCode_Success(t *testing.T) {
 		assert.Equal(t, "device-123", body["device_code"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -101,7 +101,7 @@ func TestExchangeDeviceCode_Pending(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(PendingResponse{
+		_ = json.NewEncoder(w).Encode(PendingResponse{
 			Status:   "authorization_pending",
 			Interval: 5,
 		})
@@ -119,7 +119,7 @@ func TestExchangeDeviceCode_SlowDown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(PendingResponse{
+		_ = json.NewEncoder(w).Encode(PendingResponse{
 			Status:   "slow_down",
 			Interval: 10,
 		})
@@ -137,7 +137,7 @@ func TestExchangeDeviceCode_AccessDenied(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "access_denied",
 				"message": "Authorization was denied",
@@ -158,7 +158,7 @@ func TestExchangeDeviceCode_ExpiredToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "expired_token",
 				"message": "Device authorization has expired",
@@ -179,7 +179,7 @@ func TestExchangeDeviceCode_InvalidDeviceCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "invalid_device_code",
 				"message": "Device code is invalid",
@@ -220,7 +220,7 @@ func TestRefreshToken_Success(t *testing.T) {
 		assert.Equal(t, "old-refresh-token", body["refresh_token"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -236,7 +236,7 @@ func TestRefreshToken_Error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "invalid_refresh_token",
 				"message": "Refresh token is invalid",
@@ -273,7 +273,7 @@ func TestRevokeToken_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "internal_error",
 				"message": "Something went wrong",
@@ -319,7 +319,7 @@ func TestGetMe_Success(t *testing.T) {
 		assert.Equal(t, "Bearer my-access-token", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -336,7 +336,7 @@ func TestGetMe_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "unauthorized",
 				"message": "Invalid or expired token",
@@ -396,7 +396,7 @@ func TestListConferences_Success(t *testing.T) {
 		assert.Empty(t, r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -429,7 +429,7 @@ func TestListConferences_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "internal_error",
 				"message": "database unavailable",
@@ -476,7 +476,7 @@ func TestGetConference_Success(t *testing.T) {
 		assert.Empty(t, r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -494,7 +494,7 @@ func TestGetConference_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "not_found",
 				"message": "Conference not found",
@@ -514,7 +514,7 @@ func TestGetConference_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "internal_error",
 				"message": "database unavailable",
@@ -569,7 +569,7 @@ func TestUpdateMe_Success(t *testing.T) {
 		assert.Equal(t, "private", body["privacy_setting"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -587,7 +587,7 @@ func TestUpdateMe_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "unauthorized",
 				"message": "Invalid or expired token",
@@ -609,7 +609,7 @@ func TestUpdateMe_BadRequest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "invalid_privacy_setting",
 				"message": "invalid privacy setting",
@@ -632,7 +632,7 @@ func TestUpdateMe_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "internal_error",
 				"message": "database unavailable",

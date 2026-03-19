@@ -24,7 +24,7 @@ func TestAuthenticatedClient_GetMe_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -52,7 +52,7 @@ func TestAuthenticatedClient_GetMe_AutoRefresh(t *testing.T) {
 			if n == 1 {
 				// First call: reject with 401
 				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"error": map[string]string{
 						"code":    "unauthorized",
 						"message": "Token expired",
@@ -62,7 +62,7 @@ func TestAuthenticatedClient_GetMe_AutoRefresh(t *testing.T) {
 			}
 			// Second call (after refresh): succeed
 			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
-			json.NewEncoder(w).Encode(UserResponse{
+			_ = json.NewEncoder(w).Encode(UserResponse{
 				ID:          42,
 				GitHubID:    "12345",
 				Email:       "user@example.com",
@@ -71,10 +71,10 @@ func TestAuthenticatedClient_GetMe_AutoRefresh(t *testing.T) {
 
 		case "/auth/refresh":
 			var body map[string]string
-			json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewDecoder(r.Body).Decode(&body)
 			assert.Equal(t, "valid-refresh-token", body["refresh_token"])
 
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "new-access-token",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
@@ -116,7 +116,7 @@ func TestAuthenticatedClient_GetMe_RefreshFailure_ReturnsSessionExpired(t *testi
 		switch r.URL.Path {
 		case "/users/me":
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "unauthorized",
 					"message": "Token expired",
@@ -125,7 +125,7 @@ func TestAuthenticatedClient_GetMe_RefreshFailure_ReturnsSessionExpired(t *testi
 
 		case "/auth/refresh":
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "invalid_refresh_token",
 					"message": "Refresh token is invalid",
@@ -171,7 +171,7 @@ func TestAuthenticatedClient_GetMe_NoRefreshToken(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		// Always return 401 for /users/me
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "unauthorized",
 				"message": "Token expired",
@@ -225,7 +225,7 @@ func TestAuthenticatedClient_GetMe_RefreshSucceedsButRetryFails(t *testing.T) {
 			// Both calls return 401
 			meCallCount.Add(1)
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "unauthorized",
 					"message": "Token expired",
@@ -234,7 +234,7 @@ func TestAuthenticatedClient_GetMe_RefreshSucceedsButRetryFails(t *testing.T) {
 
 		case "/auth/refresh":
 			// Refresh succeeds
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "new-access-token",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
@@ -273,7 +273,7 @@ func TestAuthenticatedClient_UpdateMe_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -301,7 +301,7 @@ func TestAuthenticatedClient_UpdateMe_AutoRefresh(t *testing.T) {
 			n := callCount.Add(1)
 			if n == 1 {
 				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"error": map[string]string{
 						"code":    "unauthorized",
 						"message": "Token expired",
@@ -310,7 +310,7 @@ func TestAuthenticatedClient_UpdateMe_AutoRefresh(t *testing.T) {
 				return
 			}
 			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
-			json.NewEncoder(w).Encode(UserResponse{
+			_ = json.NewEncoder(w).Encode(UserResponse{
 				ID:             42,
 				GitHubID:       "12345",
 				Email:          "user@example.com",
@@ -319,7 +319,7 @@ func TestAuthenticatedClient_UpdateMe_AutoRefresh(t *testing.T) {
 			})
 
 		case "/auth/refresh":
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "new-access-token",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
@@ -359,7 +359,7 @@ func TestAuthenticatedClient_UpdateMe_RefreshFails_ReturnsSessionExpired(t *test
 		switch r.URL.Path {
 		case "/users/me":
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "unauthorized",
 					"message": "Token expired",
@@ -368,7 +368,7 @@ func TestAuthenticatedClient_UpdateMe_RefreshFails_ReturnsSessionExpired(t *test
 
 		case "/auth/refresh":
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "invalid_refresh_token",
 					"message": "Refresh token is invalid",
