@@ -10,6 +10,10 @@
   "github.copilot.chat.agent.autoFix": true,
   "chat.tools.terminal.autoApprove": {
     "./bin/unconf": true,
-    "go test": true
+    "make": true,
+    "git add": true,
+    "git commit": true,
+    "go test": true,
+    "go build": true
   }
 }
