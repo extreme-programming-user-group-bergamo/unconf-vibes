@@ -40,10 +40,17 @@ type TokenResponse struct {
 
 // UserResponse represents the user object within TokenResponse.
 type UserResponse struct {
-	ID          int64  `json:"id"`
-	GitHubID    string `json:"github_id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
+	ID             int64  `json:"id"`
+	GitHubID       string `json:"github_id"`
+	Email          string `json:"email"`
+	DisplayName    string `json:"display_name"`
+	PrivacySetting string `json:"privacy_setting"`
+}
+
+// UpdateProfileRequest represents the request body for PUT /users/me.
+type UpdateProfileRequest struct {
+	DisplayName    *string `json:"display_name,omitempty"`
+	PrivacySetting *string `json:"privacy_setting,omitempty"`
 }
 
 // PendingResponse represents the 202 response from POST /auth/token while pending.
@@ -291,6 +298,33 @@ func (c *Client) GetMe(ctx context.Context, accessToken string) (*UserResponse, 
 
 	if resp.IsError() {
 		return nil, fmt.Errorf("failed to get user profile: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &user, nil
+}
+
+// UpdateMe updates the authenticated user's profile via PUT /users/me.
+func (c *Client) UpdateMe(ctx context.Context, accessToken string, input UpdateProfileRequest) (*UserResponse, error) {
+	var user UserResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetBody(input).
+		SetResult(&user).
+		SetError(&errEnvelope).
+		Put("/users/me")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user profile: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to update user profile: %w", ErrUnauthorized)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to update user profile: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
 	}
 
 	return &user, nil

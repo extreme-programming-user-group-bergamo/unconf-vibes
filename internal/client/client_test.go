@@ -540,3 +540,123 @@ func TestGetConference_NetworkError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get conference")
 }
+
+func TestUpdateMe_Success(t *testing.T) {
+	displayName := "New Name"
+	privacy := "private"
+	input := UpdateProfileRequest{
+		DisplayName:    &displayName,
+		PrivacySetting: &privacy,
+	}
+
+	expected := UserResponse{
+		ID:             42,
+		GitHubID:       "12345",
+		Email:          "user@example.com",
+		DisplayName:    "New Name",
+		PrivacySetting: "private",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/users/me", r.URL.Path)
+		assert.Equal(t, "Bearer my-access-token", r.Header.Get("Authorization"))
+
+		var body map[string]string
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "New Name", body["display_name"])
+		assert.Equal(t, "private", body["privacy_setting"])
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "my-access-token", input)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), user.ID)
+	assert.Equal(t, "New Name", user.DisplayName)
+	assert.Equal(t, "private", user.PrivacySetting)
+	assert.Equal(t, "user@example.com", user.Email)
+}
+
+func TestUpdateMe_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unauthorized",
+				"message": "Invalid or expired token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	displayName := "New Name"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "bad-token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+}
+
+func TestUpdateMe_BadRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "invalid_privacy_setting",
+				"message": "invalid privacy setting",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	privacy := "invalid"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{PrivacySetting: &privacy})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
+	assert.Contains(t, err.Error(), "400")
+}
+
+func TestUpdateMe_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	displayName := "Name"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestUpdateMe_NetworkError(t *testing.T) {
+	displayName := "Name"
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
+}

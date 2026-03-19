@@ -257,3 +257,135 @@ func TestAuthenticatedClient_GetMe_RefreshSucceedsButRetryFails(t *testing.T) {
 	// Should NOT infinite loop — just returns the error
 	assert.ErrorIs(t, err, ErrUnauthorized)
 }
+
+func TestAuthenticatedClient_UpdateMe_Success(t *testing.T) {
+	displayName := "Updated"
+	input := UpdateProfileRequest{DisplayName: &displayName}
+
+	expected := UserResponse{
+		ID:             42,
+		GitHubID:       "12345",
+		Email:          "user@example.com",
+		DisplayName:    "Updated",
+		PrivacySetting: "public",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	user, err := ac.UpdateMe(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Updated", user.DisplayName)
+	assert.Equal(t, "public", user.PrivacySetting)
+}
+
+func TestAuthenticatedClient_UpdateMe_AutoRefresh(t *testing.T) {
+	var callCount atomic.Int32
+	displayName := "Updated"
+	input := UpdateProfileRequest{DisplayName: &displayName}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/users/me":
+			n := callCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "Token expired",
+					},
+				})
+				return
+			}
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			json.NewEncoder(w).Encode(UserResponse{
+				ID:             42,
+				GitHubID:       "12345",
+				Email:          "user@example.com",
+				DisplayName:    "Updated",
+				PrivacySetting: "public",
+			})
+
+		case "/auth/refresh":
+			json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+				User: UserResponse{
+					ID:          42,
+					GitHubID:    "12345",
+					Email:       "user@example.com",
+					DisplayName: "Updated",
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	user, err := ac.UpdateMe(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Updated", user.DisplayName)
+
+	newAccess, err := store.GetAccessToken()
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", newAccess)
+}
+
+func TestAuthenticatedClient_UpdateMe_RefreshFails_ReturnsSessionExpired(t *testing.T) {
+	displayName := "Updated"
+	input := UpdateProfileRequest{DisplayName: &displayName}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/users/me":
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    "unauthorized",
+					"message": "Token expired",
+				},
+			})
+
+		case "/auth/refresh":
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    "invalid_refresh_token",
+					"message": "Refresh token is invalid",
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "invalid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	user, err := ac.UpdateMe(context.Background(), input)
+
+	assert.Nil(t, user)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSessionExpired)
+	assert.False(t, store.HasValidToken())
+}
