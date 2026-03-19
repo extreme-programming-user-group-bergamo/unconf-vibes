@@ -40,7 +40,7 @@ func runLogin(cmd *cobra.Command, authClient AuthClient, tokenStore auth.TokenSt
 	out := cmd.OutOrStdout()
 
 	if !force && tokenStore.HasValidToken() {
-		fmt.Fprintln(out, "You are already logged in. Use --force to re-authenticate.")
+		_, _ = fmt.Fprintln(out, "You are already logged in. Use --force to re-authenticate.")
 		return nil
 	}
 
@@ -53,9 +53,9 @@ func runLogin(cmd *cobra.Command, authClient AuthClient, tokenStore auth.TokenSt
 
 	slog.Info("login: device code received", "user_code", deviceResp.UserCode, "expires_in", deviceResp.ExpiresIn)
 
-	fmt.Fprintf(out, "Your device code is: %s\n", deviceResp.UserCode)
-	fmt.Fprintf(out, "Please visit: %s\n", deviceResp.VerificationURI)
-	fmt.Fprintln(out, "Waiting for authorization...")
+	_, _ = fmt.Fprintf(out, "Your device code is: %s\n", deviceResp.UserCode)
+	_, _ = fmt.Fprintf(out, "Please visit: %s\n", deviceResp.VerificationURI)
+	_, _ = fmt.Fprintln(out, "Waiting for authorization...")
 
 	tokenResp, err := pollForToken(ctx, authClient, deviceResp)
 	if err != nil {
@@ -68,7 +68,7 @@ func runLogin(cmd *cobra.Command, authClient AuthClient, tokenStore auth.TokenSt
 
 	slog.Info("login: authentication successful", "user_id", tokenResp.User.ID, "display_name", tokenResp.User.DisplayName)
 
-	fmt.Fprintf(out, "Welcome, %s! You are now logged in.\n", tokenResp.User.DisplayName)
+	_, _ = fmt.Fprintf(out, "Welcome, %s! You are now logged in.\n", tokenResp.User.DisplayName)
 
 	return nil
 }

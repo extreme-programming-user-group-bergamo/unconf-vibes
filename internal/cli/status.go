@@ -37,22 +37,22 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient) error {
 	user, err := statusClient.GetMe(ctx)
 	if err != nil {
 		if errors.Is(err, auth.ErrNotAuthenticated) {
-			fmt.Fprintln(errOut, "You are not logged in. Run 'unconf login' to authenticate.")
+			_, _ = fmt.Fprintln(errOut, "You are not logged in. Run 'unconf login' to authenticate.")
 			return fmt.Errorf("failed to get user profile: %w", err)
 		}
 
 		if errors.Is(err, client.ErrSessionExpired) {
-			fmt.Fprintln(errOut, "Your session has expired. Please run 'unconf login' to re-authenticate.")
+			_, _ = fmt.Fprintln(errOut, "Your session has expired. Please run 'unconf login' to re-authenticate.")
 			return fmt.Errorf("failed to get user profile: %w", err)
 		}
 
-		fmt.Fprintln(errOut, "Could not connect to the API. Please check your connection and try again.")
+		_, _ = fmt.Fprintln(errOut, "Could not connect to the API. Please check your connection and try again.")
 		return fmt.Errorf("failed to get user profile: %w", err)
 	}
 
-	fmt.Fprintf(out, "Logged in as %s\n", user.DisplayName)
-	fmt.Fprintf(out, "  Email:     %s\n", user.Email)
-	fmt.Fprintf(out, "  GitHub ID: %s\n", user.GitHubID)
+	_, _ = fmt.Fprintf(out, "Logged in as %s\n", user.DisplayName)
+	_, _ = fmt.Fprintf(out, "  Email:     %s\n", user.Email)
+	_, _ = fmt.Fprintf(out, "  GitHub ID: %s\n", user.GitHubID)
 
 	return nil
 }

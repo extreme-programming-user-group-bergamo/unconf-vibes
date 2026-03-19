@@ -40,7 +40,7 @@ func TestLoginCmd_SuccessfulFlow(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/auth/device":
-			json.NewEncoder(w).Encode(client.DeviceFlowResponse{
+			_ = json.NewEncoder(w).Encode(client.DeviceFlowResponse{
 				DeviceCode:      "test-device-code",
 				UserCode:        "TEST-1234",
 				VerificationURI: "https://github.com/login/device",
@@ -51,13 +51,13 @@ func TestLoginCmd_SuccessfulFlow(t *testing.T) {
 			callCount++
 			if callCount < 2 {
 				w.WriteHeader(http.StatusAccepted)
-				json.NewEncoder(w).Encode(client.PendingResponse{
+				_ = json.NewEncoder(w).Encode(client.PendingResponse{
 					Status:   "authorization_pending",
 					Interval: 1,
 				})
 				return
 			}
-			json.NewEncoder(w).Encode(client.TokenResponse{
+			_ = json.NewEncoder(w).Encode(client.TokenResponse{
 				AccessToken:  "access-token-123",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
@@ -106,7 +106,7 @@ func TestLoginCmd_ForceRelogin(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/auth/device":
-			json.NewEncoder(w).Encode(client.DeviceFlowResponse{
+			_ = json.NewEncoder(w).Encode(client.DeviceFlowResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "FORC-1234",
 				VerificationURI: "https://github.com/login/device",
@@ -114,7 +114,7 @@ func TestLoginCmd_ForceRelogin(t *testing.T) {
 				Interval:        1,
 			})
 		case "/auth/token":
-			json.NewEncoder(w).Encode(client.TokenResponse{
+			_ = json.NewEncoder(w).Encode(client.TokenResponse{
 				AccessToken:  "new-access-token",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
@@ -155,7 +155,7 @@ func TestLoginCmd_DeviceFlowServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "service_unavailable",
 				"message": "Auth service not configured",
@@ -184,7 +184,7 @@ func TestLoginCmd_AccessDenied(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/auth/device":
-			json.NewEncoder(w).Encode(client.DeviceFlowResponse{
+			_ = json.NewEncoder(w).Encode(client.DeviceFlowResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "DENY-1234",
 				VerificationURI: "https://github.com/login/device",
@@ -193,7 +193,7 @@ func TestLoginCmd_AccessDenied(t *testing.T) {
 			})
 		case "/auth/token":
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
 					"code":    "access_denied",
 					"message": "Authorization was denied",
@@ -223,7 +223,7 @@ func TestLoginCmd_ContextCancellation(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/auth/device":
-			json.NewEncoder(w).Encode(client.DeviceFlowResponse{
+			_ = json.NewEncoder(w).Encode(client.DeviceFlowResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "CANC-1234",
 				VerificationURI: "https://github.com/login/device",
@@ -232,7 +232,7 @@ func TestLoginCmd_ContextCancellation(t *testing.T) {
 			})
 		case "/auth/token":
 			w.WriteHeader(http.StatusAccepted)
-			json.NewEncoder(w).Encode(client.PendingResponse{
+			_ = json.NewEncoder(w).Encode(client.PendingResponse{
 				Status:   "authorization_pending",
 				Interval: 1,
 			})
@@ -272,7 +272,7 @@ func TestLoginCmd_SaveTokensError(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/auth/device":
-			json.NewEncoder(w).Encode(client.DeviceFlowResponse{
+			_ = json.NewEncoder(w).Encode(client.DeviceFlowResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "SAVE-1234",
 				VerificationURI: "https://github.com/login/device",
@@ -280,7 +280,7 @@ func TestLoginCmd_SaveTokensError(t *testing.T) {
 				Interval:        1,
 			})
 		case "/auth/token":
-			json.NewEncoder(w).Encode(client.TokenResponse{
+			_ = json.NewEncoder(w).Encode(client.TokenResponse{
 				AccessToken:  "token-123",
 				TokenType:    "Bearer",
 				ExpiresIn:    86400,
