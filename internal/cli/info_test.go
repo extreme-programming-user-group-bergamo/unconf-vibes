@@ -22,6 +22,17 @@ func (m *mockInfoClient) GetConference(ctx context.Context, slug string) (*clien
 	return nil, nil
 }
 
+type mockInfoContextStore struct {
+	getActiveConferenceFn func() (string, error)
+}
+
+func (m *mockInfoContextStore) GetActiveConference() (string, error) {
+	if m.getActiveConferenceFn != nil {
+		return m.getActiveConferenceFn()
+	}
+	return "", nil
+}
+
 func sampleConference() *client.ConferenceResponse {
 	return &client.ConferenceResponse{
 		ID:            1,
@@ -45,7 +56,7 @@ func TestInfoCmd_HappyPath(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -73,7 +84,7 @@ func TestInfoCmd_NotFound(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -93,7 +104,7 @@ func TestInfoCmd_ClientError(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"socrates-26"})
@@ -115,7 +126,7 @@ func TestInfoCmd_DateFormatting(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
@@ -133,7 +144,7 @@ func TestInfoCmd_OutputStructure(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
@@ -155,16 +166,68 @@ func TestInfoCmd_OutputStructure(t *testing.T) {
 	assert.Contains(t, output, "Attendees:")
 }
 
-func TestInfoCmd_MissingArgument(t *testing.T) {
+func TestInfoCmd_NoArgs_NoContext(t *testing.T) {
 	mock := &mockInfoClient{}
+	ctxStore := &mockInfoContextStore{
+		getActiveConferenceFn: func() (string, error) {
+			return "", nil
+		},
+	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, ctxStore)
+	var stderr bytes.Buffer
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stderr.String(), "No conference specified")
+	assert.Contains(t, stderr.String(), "unconf checkout")
+}
+
+func TestInfoCmd_NoArgs_ContextSet(t *testing.T) {
+	mock := &mockInfoClient{
+		getConferenceFn: func(_ context.Context, slug string) (*client.ConferenceResponse, error) {
+			assert.Equal(t, "socrates-26", slug)
+			return sampleConference(), nil
+		},
+	}
+	ctxStore := &mockInfoContextStore{
+		getActiveConferenceFn: func() (string, error) {
+			return "socrates-26", nil
+		},
+	}
+
+	cmd := newInfoCmd(mock, ctxStore)
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "SoCraTes 2026")
+	assert.Contains(t, stdout.String(), "Saarbrücken, Germany")
+}
+
+func TestInfoCmd_NoArgs_ContextError(t *testing.T) {
+	mock := &mockInfoClient{}
+	ctxStore := &mockInfoContextStore{
+		getActiveConferenceFn: func() (string, error) {
+			return "", fmt.Errorf("permission denied")
+		},
+	}
+
+	cmd := newInfoCmd(mock, ctxStore)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read conference context")
+	assert.Contains(t, err.Error(), "permission denied")
 }
 
 func TestInfoCmd_AllFieldsDisplayed(t *testing.T) {
@@ -187,7 +250,7 @@ func TestInfoCmd_AllFieldsDisplayed(t *testing.T) {
 		},
 	}
 
-	cmd := newInfoCmd(mock)
+	cmd := newInfoCmd(mock, &mockInfoContextStore{})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})

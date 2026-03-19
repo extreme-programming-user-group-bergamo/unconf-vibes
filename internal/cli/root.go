@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/client"
@@ -92,12 +94,24 @@ room browsing, and booking workflows.`,
 	apiClient := client.NewClient(apiEndpoint)
 	authClient := client.NewAuthenticatedClient(apiClient, store)
 
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to user config directory
+		homeDir, err = os.UserConfigDir()
+		if err != nil {
+			slog.Warn("failed to determine home directory for context management", "error", err)
+			homeDir = "." // Last resort: use current directory
+		}
+	}
+	ctxManager := config.NewContextManager(filepath.Join(homeDir, ".unconf"))
+
 	rootCmd.AddCommand(newDBCmd())
 	rootCmd.AddCommand(newLoginCmd(apiClient, store))
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 	rootCmd.AddCommand(newStatusCmd(authClient))
 	rootCmd.AddCommand(newListCmd(apiClient))
-	rootCmd.AddCommand(newInfoCmd(apiClient))
+	rootCmd.AddCommand(newInfoCmd(apiClient, ctxManager))
+	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))
 
 	return rootCmd
 }
