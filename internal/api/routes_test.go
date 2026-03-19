@@ -127,7 +127,7 @@ func TestProtectedEndpoint_NoAuthHeader_Returns401(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/users/me")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -140,7 +140,7 @@ func TestProtectedEndpoint_InvalidToken_Returns401(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -156,7 +156,7 @@ func TestGetUsersMe_ValidToken_Returns200(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -179,7 +179,7 @@ func TestPutUsersMe_ValidToken_Returns200(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -200,7 +200,7 @@ func TestPostAuthRevoke_ValidToken_Returns204(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
@@ -217,7 +217,7 @@ func TestPostAuthRevoke_ThenRevoke_SessionAlreadyRevoked(t *testing.T) {
 
 	resp1, err := http.DefaultClient.Do(req1)
 	require.NoError(t, err)
-	defer resp1.Body.Close()
+	defer func() { _ = resp1.Body.Close() }()
 	assert.Equal(t, http.StatusNoContent, resp1.StatusCode)
 
 	// Second revoke with same token should fail
@@ -226,7 +226,7 @@ func TestPostAuthRevoke_ThenRevoke_SessionAlreadyRevoked(t *testing.T) {
 
 	resp2, err := http.DefaultClient.Do(req2)
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
 }
 
@@ -235,7 +235,7 @@ func TestHealthEndpoint_NoAuth_Returns200(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -268,7 +268,7 @@ func TestPostAuthRefresh_ValidToken_Returns200(t *testing.T) {
 	body := `{"refresh_token":"` + rawRefreshToken + `"}`
 	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -282,7 +282,7 @@ func TestPostAuthRefresh_ValidToken_Returns200(t *testing.T) {
 	// Verify old refresh token no longer works (rotation invalidates it)
 	resp2, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
 
@@ -298,7 +298,7 @@ func TestPostAuthRefresh_InvalidToken_Returns401(t *testing.T) {
 	body := `{"refresh_token":"completely-invalid-token"}`
 	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -319,7 +319,7 @@ func TestPostAuthRefresh_ExpiredToken_Returns401(t *testing.T) {
 	body := `{"refresh_token":"` + rawRefreshToken + `"}`
 	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -340,7 +340,7 @@ func TestPostAuthRefresh_ThenUseNewAccessToken_Returns200(t *testing.T) {
 	body := `{"refresh_token":"` + rawRefreshToken + `"}`
 	resp, err := http.Post(srv.URL+"/auth/refresh", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -355,7 +355,7 @@ func TestPostAuthRefresh_ThenUseNewAccessToken_Returns200(t *testing.T) {
 
 	meResp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer meResp.Body.Close()
+	defer func() { _ = meResp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, meResp.StatusCode)
 
@@ -385,7 +385,7 @@ func TestGetConferences_Empty_Returns200(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/conferences")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -404,7 +404,7 @@ func TestGetConferences_WithData_Returns200(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/conferences")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -428,7 +428,7 @@ func TestGetConferenceBySlug_Found_Returns200(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/conferences/socrates-26")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -445,7 +445,7 @@ func TestGetConferenceBySlug_NotFound_Returns404(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/conferences/nonexistent")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 
@@ -461,7 +461,7 @@ func TestGetConferences_NoAuthRequired(t *testing.T) {
 	// No Authorization header — should still return 200
 	resp, err := http.Get(srv.URL + "/conferences")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -481,7 +481,7 @@ func TestGetConferences_StatusDerived(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/conferences")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
