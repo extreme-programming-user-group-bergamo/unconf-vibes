@@ -5,9 +5,9 @@ import "time"
 type BookingStatus string
 
 const (
-	BookingStatusRequested  BookingStatus = "requested"
-	BookingStatusConfirmed  BookingStatus = "confirmed"
-	BookingStatusCancelled  BookingStatus = "cancelled"
+	BookingStatusRequested BookingStatus = "requested"
+	BookingStatusConfirmed BookingStatus = "confirmed"
+	BookingStatusCancelled BookingStatus = "cancelled"
 )
 
 type Booking struct {

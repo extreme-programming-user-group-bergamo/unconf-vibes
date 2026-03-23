@@ -57,7 +57,11 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
 
-	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler)
+	roomRepo := sqlite.NewRoomRepository(db)
+	roomService := service.NewRoomService(roomRepo, bookingRepo, conferenceRepo, userRepo)
+	roomHandler := handlers.NewRoomHandler(roomService)
+
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -499,4 +503,264 @@ func TestGetConferences_StatusDerived(t *testing.T) {
 	assert.Equal(t, "past", statuses["past-conf"])
 	assert.Equal(t, "active", statuses["active-conf"])
 	assert.Equal(t, "upcoming", statuses["upcoming-conf"])
+}
+
+// --- Room integration test helpers ---
+
+func createTestRoom(t *testing.T, db *sql.DB, conferenceID int64, roomNumber, roomType string, pricePerNight float64, capacity int) *models.Room {
+	t.Helper()
+
+	roomRepo := sqlite.NewRoomRepository(db)
+	room, err := roomRepo.Create(context.Background(), &models.Room{
+		ConferenceID:  conferenceID,
+		RoomNumber:    roomNumber,
+		RoomType:      roomType,
+		PricePerNight: pricePerNight,
+		Capacity:      capacity,
+	})
+	require.NoError(t, err)
+
+	return room
+}
+
+func createTestBooking(t *testing.T, db *sql.DB, roomID, userID, conferenceID int64, status models.BookingStatus, privacySetting string) *models.Booking {
+	t.Helper()
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	booking, err := bookingRepo.Create(context.Background(), &models.Booking{
+		RoomID:         roomID,
+		UserID:         userID,
+		ConferenceID:   conferenceID,
+		Status:         status,
+		PrivacySetting: privacySetting,
+	})
+	require.NoError(t, err)
+
+	return booking
+}
+
+func createTestUserWithName(t *testing.T, db *sql.DB, githubID, email, displayName, privacy string) *models.User {
+	t.Helper()
+
+	userRepo := sqlite.NewUserRepository(db)
+	user, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:       githubID,
+		Email:          email,
+		DisplayName:    displayName,
+		PrivacySetting: privacy,
+	})
+	require.NoError(t, err)
+
+	return user
+}
+
+// --- Room integration tests ---
+
+func TestGetRooms_Empty_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-rooms", "Rooms Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-rooms/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Empty(t, body)
+}
+
+func TestGetRooms_WithRooms_Returns200(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-rooms2", "Rooms Conf 2",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	// Need conference ID — fetch it
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-rooms2")
+	require.NoError(t, err)
+
+	createTestRoom(t, db, conf.ID, "101", "double", 120.0, 2)
+	createTestRoom(t, db, conf.ID, "102", "single", 80.0, 1)
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-rooms2/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 2)
+
+	assert.Equal(t, "101", body[0]["room_number"])
+	assert.Equal(t, float64(2), body[0]["capacity"])
+	assert.Equal(t, float64(0), body[0]["spots_taken"])
+	assert.Equal(t, float64(2), body[0]["spots_available"])
+}
+
+func TestGetRooms_AvailabilityComputed(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-avail", "Avail Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-avail")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "201", "triple", 150.0, 3)
+	user1 := createTestUserWithName(t, db, "gh-u1", "u1@test.com", "User One", "public")
+	user2 := createTestUserWithName(t, db, "gh-u2", "u2@test.com", "User Two", "public")
+
+	createTestBooking(t, db, room.ID, user1.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	createTestBooking(t, db, room.ID, user2.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-avail/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 1)
+
+	assert.Equal(t, float64(2), body[0]["spots_taken"])
+	assert.Equal(t, float64(1), body[0]["spots_available"])
+}
+
+func TestGetRooms_PublicOccupant_IncludesUserInfo(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-pub", "Public Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-pub")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "301", "double", 120.0, 2)
+	user := createTestUserWithName(t, db, "gh-pub", "pub@test.com", "Public Alice", "public")
+	createTestBooking(t, db, room.ID, user.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-pub/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 1)
+
+	occupants := body[0]["occupants"].([]interface{})
+	require.Len(t, occupants, 1)
+
+	occ := occupants[0].(map[string]interface{})
+	assert.Equal(t, "Public Alice", occ["display_name"])
+	assert.NotNil(t, occ["user_id"])
+}
+
+func TestGetRooms_PrivateOccupant_HidesUserInfo(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-priv", "Private Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-priv")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "401", "double", 120.0, 2)
+	user := createTestUserWithName(t, db, "gh-priv", "priv@test.com", "Secret Bob", "public")
+	createTestBooking(t, db, room.ID, user.ID, conf.ID, models.BookingStatusConfirmed, "private")
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-priv/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 1)
+
+	occupants := body[0]["occupants"].([]interface{})
+	require.Len(t, occupants, 1)
+
+	occ := occupants[0].(map[string]interface{})
+	assert.Equal(t, "Private attendee", occ["display_name"])
+	assert.Nil(t, occ["user_id"])
+}
+
+func TestGetRooms_NonExistentSlug_Returns404(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/conferences/no-such-conf/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	errObj := body["error"].(map[string]interface{})
+	assert.Equal(t, "not_found", errObj["code"])
+}
+
+func TestGetRooms_NoAuthRequired(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-noauth", "No Auth Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	// No Authorization header — should still return 200
+	resp, err := http.Get(srv.URL + "/conferences/conf-noauth/rooms")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestGetConferences_ReturnsRealAttendeeCount(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-attend", "Attendee Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-attend")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "501", "double", 120.0, 2)
+	user1 := createTestUserWithName(t, db, "gh-att1", "att1@test.com", "Attendee 1", "public")
+	user2 := createTestUserWithName(t, db, "gh-att2", "att2@test.com", "Attendee 2", "public")
+
+	createTestBooking(t, db, room.ID, user1.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	createTestBooking(t, db, room.ID, user2.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	resp, err := http.Get(srv.URL + "/conferences")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	// Find our conference
+	var found bool
+	for _, c := range body {
+		if c["slug"] == "conf-attend" {
+			assert.Equal(t, float64(2), c["attendee_count"])
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "conference conf-attend not found in response")
 }

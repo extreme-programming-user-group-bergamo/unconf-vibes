@@ -14,6 +14,7 @@
     "git add": true,
     "git commit": true,
     "go test": true,
-    "go build": true
+    "go build": true,
+    "gofmt": true
   }
 }

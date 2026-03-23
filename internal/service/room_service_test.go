@@ -84,10 +84,10 @@ func (m *mockBookingRepository) Create(ctx context.Context, booking *models.Book
 }
 
 type mockUserRepository struct {
-	getByIDFn      func(ctx context.Context, id int64) (*models.User, error)
+	getByIDFn       func(ctx context.Context, id int64) (*models.User, error)
 	getByGitHubIDFn func(ctx context.Context, githubID string) (*models.User, error)
-	createFn       func(ctx context.Context, user *models.User) (*models.User, error)
-	updateFn       func(ctx context.Context, user *models.User) (*models.User, error)
+	createFn        func(ctx context.Context, user *models.User) (*models.User, error)
+	updateFn        func(ctx context.Context, user *models.User) (*models.User, error)
 }
 
 func (m *mockUserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
