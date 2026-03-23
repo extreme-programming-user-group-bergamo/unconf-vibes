@@ -96,6 +96,11 @@ func (s *RoomService) ListRooms(ctx context.Context, slug string) ([]*RoomRespon
 			occupants = append(occupants, occupant)
 		}
 
+		spotsAvailable := room.Capacity - spotsTaken
+		if spotsAvailable < 0 {
+			spotsAvailable = 0
+		}
+
 		responses = append(responses, &RoomResponse{
 			ID:             room.ID,
 			ConferenceID:   room.ConferenceID,
@@ -104,7 +109,7 @@ func (s *RoomService) ListRooms(ctx context.Context, slug string) ([]*RoomRespon
 			PricePerNight:  room.PricePerNight,
 			Capacity:       room.Capacity,
 			SpotsTaken:     spotsTaken,
-			SpotsAvailable: room.Capacity - spotsTaken,
+			SpotsAvailable: spotsAvailable,
 			Occupants:      occupants,
 		})
 	}
