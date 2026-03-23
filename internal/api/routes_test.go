@@ -53,7 +53,8 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	userHandler := handlers.NewUserHandler(userService)
 
 	conferenceRepo := sqlite.NewConferenceRepository(db)
-	conferenceService := service.NewConferenceService(conferenceRepo)
+	bookingRepo := sqlite.NewBookingRepository(db)
+	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
 
 	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/katurdays/unconf/internal/models"
@@ -26,12 +27,13 @@ type ConferenceResponse struct {
 
 // ConferenceService handles conference business logic.
 type ConferenceService struct {
-	confRepo repository.ConferenceRepository
+	confRepo    repository.ConferenceRepository
+	bookingRepo repository.BookingRepository
 }
 
-// NewConferenceService creates a new ConferenceService with the given repository.
-func NewConferenceService(confRepo repository.ConferenceRepository) *ConferenceService {
-	return &ConferenceService{confRepo: confRepo}
+// NewConferenceService creates a new ConferenceService with the given repositories.
+func NewConferenceService(confRepo repository.ConferenceRepository, bookingRepo repository.BookingRepository) *ConferenceService {
+	return &ConferenceService{confRepo: confRepo, bookingRepo: bookingRepo}
 }
 
 // ListConferences returns all conferences with computed status and attendee count.
@@ -44,7 +46,12 @@ func (s *ConferenceService) ListConferences(ctx context.Context) ([]*ConferenceR
 	now := time.Now()
 	responses := make([]*ConferenceResponse, 0, len(conferences))
 	for _, conf := range conferences {
-		responses = append(responses, toResponseAt(conf, now))
+		attendeeCount, countErr := s.bookingRepo.CountByConference(ctx, conf.ID)
+		if countErr != nil {
+			slog.Error("failed to count attendees for conference", "error", countErr, "conference_id", conf.ID)
+			attendeeCount = 0
+		}
+		responses = append(responses, toResponseAt(conf, now, attendeeCount))
 	}
 
 	return responses, nil
@@ -61,7 +68,13 @@ func (s *ConferenceService) GetConference(ctx context.Context, slug string) (*Co
 		return nil, fmt.Errorf("failed to get conference: %w", err)
 	}
 
-	return toResponseAt(conf, time.Now()), nil
+	attendeeCount, countErr := s.bookingRepo.CountByConference(ctx, conf.ID)
+	if countErr != nil {
+		slog.Error("failed to count attendees for conference", "error", countErr, "conference_id", conf.ID)
+		attendeeCount = 0
+	}
+
+	return toResponseAt(conf, time.Now(), attendeeCount), nil
 }
 
 // DeriveStatus computes the conference status from its dates using the current time.
@@ -95,7 +108,7 @@ func truncateToDate(t time.Time) time.Time {
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-func toResponseAt(conf *models.Conference, now time.Time) *ConferenceResponse {
+func toResponseAt(conf *models.Conference, now time.Time, attendeeCount int) *ConferenceResponse {
 	return &ConferenceResponse{
 		ID:            conf.ID,
 		Slug:          conf.Slug,
@@ -105,7 +118,7 @@ func toResponseAt(conf *models.Conference, now time.Time) *ConferenceResponse {
 		StartDate:     conf.StartDate.Format("2006-01-02"),
 		EndDate:       conf.EndDate.Format("2006-01-02"),
 		Capacity:      conf.Capacity,
-		AttendeeCount: 0,
+		AttendeeCount: attendeeCount,
 		Status:        DeriveStatusAt(conf, now),
 	}
 }
