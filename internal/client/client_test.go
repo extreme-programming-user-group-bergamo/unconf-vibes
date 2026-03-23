@@ -25,7 +25,7 @@ func TestStartDeviceFlow_Success(t *testing.T) {
 		assert.Equal(t, "/auth/device", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -44,7 +44,7 @@ func TestStartDeviceFlow_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "service_unavailable",
 				"message": "Auth service not configured",
@@ -80,11 +80,12 @@ func TestExchangeDeviceCode_Success(t *testing.T) {
 		assert.Equal(t, "/auth/token", r.URL.Path)
 
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
 		assert.Equal(t, "device-123", body["device_code"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -100,7 +101,7 @@ func TestExchangeDeviceCode_Pending(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(PendingResponse{
+		_ = json.NewEncoder(w).Encode(PendingResponse{
 			Status:   "authorization_pending",
 			Interval: 5,
 		})
@@ -118,7 +119,7 @@ func TestExchangeDeviceCode_SlowDown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(PendingResponse{
+		_ = json.NewEncoder(w).Encode(PendingResponse{
 			Status:   "slow_down",
 			Interval: 10,
 		})
@@ -136,7 +137,7 @@ func TestExchangeDeviceCode_AccessDenied(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "access_denied",
 				"message": "Authorization was denied",
@@ -157,7 +158,7 @@ func TestExchangeDeviceCode_ExpiredToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "expired_token",
 				"message": "Device authorization has expired",
@@ -178,7 +179,7 @@ func TestExchangeDeviceCode_InvalidDeviceCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "invalid_device_code",
 				"message": "Device code is invalid",
@@ -214,11 +215,12 @@ func TestRefreshToken_Success(t *testing.T) {
 		assert.Equal(t, "/auth/refresh", r.URL.Path)
 
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
 		assert.Equal(t, "old-refresh-token", body["refresh_token"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -234,7 +236,7 @@ func TestRefreshToken_Error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "invalid_refresh_token",
 				"message": "Refresh token is invalid",
@@ -271,7 +273,7 @@ func TestRevokeToken_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "internal_error",
 				"message": "Something went wrong",
@@ -317,7 +319,7 @@ func TestGetMe_Success(t *testing.T) {
 		assert.Equal(t, "Bearer my-access-token", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	}))
 	defer srv.Close()
 
@@ -334,7 +336,7 @@ func TestGetMe_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{
 				"code":    "unauthorized",
 				"message": "Invalid or expired token",
@@ -358,4 +360,303 @@ func TestGetMe_NetworkError(t *testing.T) {
 	assert.Nil(t, user)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get user profile")
+}
+
+func TestListConferences_Success(t *testing.T) {
+	expected := []ConferenceResponse{
+		{
+			ID:            1,
+			Slug:          "gophercon-2026",
+			Name:          "GopherCon 2026",
+			Description:   "Go conference",
+			Location:      "Denver, CO",
+			StartDate:     "2026-06-15",
+			EndDate:       "2026-06-18",
+			Capacity:      500,
+			AttendeeCount: 120,
+			Status:        "upcoming",
+		},
+		{
+			ID:            2,
+			Slug:          "rustconf-2026",
+			Name:          "RustConf 2026",
+			Description:   "Rust conference",
+			Location:      "Portland, OR",
+			StartDate:     "2026-08-01",
+			EndDate:       "2026-08-03",
+			Capacity:      300,
+			AttendeeCount: 50,
+			Status:        "upcoming",
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/conferences", r.URL.Path)
+		assert.Empty(t, r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, conferences, 2)
+	assert.Equal(t, "GopherCon 2026", conferences[0].Name)
+	assert.Equal(t, "RustConf 2026", conferences[1].Name)
+	assert.Equal(t, 120, conferences[0].AttendeeCount)
+}
+
+func TestListConferences_EmptyArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, conferences)
+	assert.Empty(t, conferences)
+}
+
+func TestListConferences_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conferences, err := c.ListConferences(context.Background())
+
+	assert.Nil(t, conferences)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to list conferences")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestListConferences_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	conferences, err := c.ListConferences(context.Background())
+
+	assert.Nil(t, conferences)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to list conferences")
+}
+
+func TestGetConference_Success(t *testing.T) {
+	expected := ConferenceResponse{
+		ID:            1,
+		Slug:          "socrates-26",
+		Name:          "SoCraTes 2026",
+		Description:   "Software Craftsmanship and Testing Conference",
+		Location:      "Saarbrücken, Germany",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-10",
+		Capacity:      200,
+		AttendeeCount: 0,
+		Status:        "upcoming",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/conferences/socrates-26", r.URL.Path)
+		assert.Empty(t, r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	require.NoError(t, err)
+	assert.Equal(t, "SoCraTes 2026", conf.Name)
+	assert.Equal(t, "socrates-26", conf.Slug)
+	assert.Equal(t, 200, conf.Capacity)
+	assert.Equal(t, 0, conf.AttendeeCount)
+}
+
+func TestGetConference_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "not_found",
+				"message": "Conference not found",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "nonexistent")
+
+	assert.Nil(t, conf)
+	assert.ErrorIs(t, err, ErrConferenceNotFound)
+}
+
+func TestGetConference_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	assert.Nil(t, conf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get conference")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGetConference_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	conf, err := c.GetConference(context.Background(), "socrates-26")
+
+	assert.Nil(t, conf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get conference")
+}
+
+func TestUpdateMe_Success(t *testing.T) {
+	displayName := "New Name"
+	privacy := "private"
+	input := UpdateProfileRequest{
+		DisplayName:    &displayName,
+		PrivacySetting: &privacy,
+	}
+
+	expected := UserResponse{
+		ID:             42,
+		GitHubID:       "12345",
+		Email:          "user@example.com",
+		DisplayName:    "New Name",
+		PrivacySetting: "private",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/users/me", r.URL.Path)
+		assert.Equal(t, "Bearer my-access-token", r.Header.Get("Authorization"))
+
+		var body map[string]string
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "New Name", body["display_name"])
+		assert.Equal(t, "private", body["privacy_setting"])
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "my-access-token", input)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), user.ID)
+	assert.Equal(t, "New Name", user.DisplayName)
+	assert.Equal(t, "private", user.PrivacySetting)
+	assert.Equal(t, "user@example.com", user.Email)
+}
+
+func TestUpdateMe_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unauthorized",
+				"message": "Invalid or expired token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	displayName := "New Name"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "bad-token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+}
+
+func TestUpdateMe_BadRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "invalid_privacy_setting",
+				"message": "invalid privacy setting",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	privacy := "invalid"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{PrivacySetting: &privacy})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
+	assert.Contains(t, err.Error(), "400")
+}
+
+func TestUpdateMe_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "internal_error",
+				"message": "database unavailable",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	displayName := "Name"
+	c := NewClient(srv.URL)
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestUpdateMe_NetworkError(t *testing.T) {
+	displayName := "Name"
+	c := NewClient("http://127.0.0.1:1") // connection refused
+	user, err := c.UpdateMe(context.Background(), "token", UpdateProfileRequest{DisplayName: &displayName})
+
+	assert.Nil(t, user)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update user profile")
 }

@@ -19,3 +19,9 @@ type RefreshSessionRepository interface {
 	Rotate(ctx context.Context, currentSessionID int64, replacement *models.RefreshSession) (*models.RefreshSession, error)
 	RevokeByID(ctx context.Context, sessionID int64) error
 }
+
+type ConferenceRepository interface {
+	Create(ctx context.Context, conf *models.Conference) (*models.Conference, error)
+	GetBySlug(ctx context.Context, slug string) (*models.Conference, error)
+	List(ctx context.Context) ([]*models.Conference, error)
+}

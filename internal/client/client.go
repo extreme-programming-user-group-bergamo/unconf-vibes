@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -39,10 +40,17 @@ type TokenResponse struct {
 
 // UserResponse represents the user object within TokenResponse.
 type UserResponse struct {
-	ID          int64  `json:"id"`
-	GitHubID    string `json:"github_id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
+	ID             int64  `json:"id"`
+	GitHubID       string `json:"github_id"`
+	Email          string `json:"email"`
+	DisplayName    string `json:"display_name"`
+	PrivacySetting string `json:"privacy_setting"`
+}
+
+// UpdateProfileRequest represents the request body for PUT /users/me.
+type UpdateProfileRequest struct {
+	DisplayName    *string `json:"display_name,omitempty"`
+	PrivacySetting *string `json:"privacy_setting,omitempty"`
 }
 
 // PendingResponse represents the 202 response from POST /auth/token while pending.
@@ -198,6 +206,73 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 // ErrUnauthorized is returned when the API responds with 401.
 var ErrUnauthorized = errors.New("unauthorized")
 
+// ErrConferenceNotFound is returned when the requested conference slug does not exist.
+var ErrConferenceNotFound = errors.New("conference not found")
+
+// ConferenceResponse represents a conference returned by the API.
+type ConferenceResponse struct {
+	ID            int64  `json:"id"`
+	Slug          string `json:"slug"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Location      string `json:"location"`
+	StartDate     string `json:"start_date"`
+	EndDate       string `json:"end_date"`
+	Capacity      int    `json:"capacity"`
+	AttendeeCount int    `json:"attendee_count"`
+	Status        string `json:"status"`
+}
+
+// ListConferences fetches all conferences via GET /conferences.
+func (c *Client) ListConferences(ctx context.Context) ([]ConferenceResponse, error) {
+	var result []ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Get("/conferences")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list conferences: %w", err)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to list conferences: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	if result == nil {
+		result = []ConferenceResponse{}
+	}
+
+	return result, nil
+}
+
+// GetConference fetches a single conference by slug via GET /conferences/{slug}.
+func (c *Client) GetConference(ctx context.Context, slug string) (*ConferenceResponse, error) {
+	var result ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Get("/conferences/" + url.PathEscape(slug))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conference: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusNotFound {
+		return nil, ErrConferenceNotFound
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to get conference: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
+}
+
 // ErrSessionExpired is returned when the access token is expired and the refresh token
 // is also invalid/expired/revoked, requiring a full re-login.
 var ErrSessionExpired = errors.New("session expired: please run 'unconf login' to re-authenticate")
@@ -223,6 +298,33 @@ func (c *Client) GetMe(ctx context.Context, accessToken string) (*UserResponse, 
 
 	if resp.IsError() {
 		return nil, fmt.Errorf("failed to get user profile: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &user, nil
+}
+
+// UpdateMe updates the authenticated user's profile via PUT /users/me.
+func (c *Client) UpdateMe(ctx context.Context, accessToken string, input UpdateProfileRequest) (*UserResponse, error) {
+	var user UserResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetBody(input).
+		SetResult(&user).
+		SetError(&errEnvelope).
+		Put("/users/me")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user profile: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to update user profile: %w", ErrUnauthorized)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to update user profile: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
 	}
 
 	return &user, nil

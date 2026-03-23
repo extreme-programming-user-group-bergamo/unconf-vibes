@@ -33,7 +33,7 @@ func runLogout(cmd *cobra.Command, revokeClient RevokeClient, tokenStore auth.To
 	accessToken, err := tokenStore.GetAccessToken()
 	if err != nil {
 		if errors.Is(err, auth.ErrNotAuthenticated) {
-			fmt.Fprintln(out, "You are not currently logged in.")
+			_, _ = fmt.Fprintln(out, "You are not currently logged in.")
 			return nil
 		}
 
@@ -41,7 +41,7 @@ func runLogout(cmd *cobra.Command, revokeClient RevokeClient, tokenStore auth.To
 	}
 
 	if accessToken == "" {
-		fmt.Fprintln(out, "You are not currently logged in.")
+		_, _ = fmt.Fprintln(out, "You are not currently logged in.")
 		return nil
 	}
 
@@ -57,7 +57,7 @@ func runLogout(cmd *cobra.Command, revokeClient RevokeClient, tokenStore auth.To
 
 	slog.Info("logout: credentials cleared successfully")
 
-	fmt.Fprintln(out, "You have been logged out.")
+	_, _ = fmt.Fprintln(out, "You have been logged out.")
 
 	return nil
 }

@@ -60,6 +60,41 @@ func (ac *AuthenticatedClient) GetMe(ctx context.Context) (*UserResponse, error)
 	return retryUser, nil
 }
 
+// UpdateMe updates the authenticated user's profile, automatically refreshing
+// the access token on 401.
+func (ac *AuthenticatedClient) UpdateMe(ctx context.Context, input UpdateProfileRequest) (*UserResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "UpdateMe")
+
+	user, err := ac.client.UpdateMe(ctx, accessToken, input)
+	if err == nil {
+		return user, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	// Access token rejected — attempt refresh
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "UpdateMe")
+
+	retryUser, retryErr := ac.client.UpdateMe(ctx, newAccessToken, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to update user profile after token refresh: %w", retryErr)
+	}
+
+	return retryUser, nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.
