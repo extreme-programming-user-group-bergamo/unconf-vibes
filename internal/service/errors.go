@@ -18,6 +18,7 @@ var (
 	ErrSessionNotFound       = errors.New("session not found")
 	ErrInvalidPrivacySetting = errors.New("invalid privacy setting: must be public, private, or connections_only")
 	ErrConferenceNotFound    = errors.New("conference not found")
+	ErrRoomNotFound          = errors.New("room not found")
 )
 
 type PendingAuthError struct {
