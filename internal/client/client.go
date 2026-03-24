@@ -20,6 +20,7 @@ var (
 	ErrExpiredDeviceCode    = errors.New("device code expired")
 	ErrRoomFull             = errors.New("room is at capacity")
 	ErrAlreadyBooked        = errors.New("user already has a booking for this conference")
+	ErrRoomNotFound         = errors.New("room not found")
 )
 
 // DeviceFlowResponse represents the response from POST /auth/device.

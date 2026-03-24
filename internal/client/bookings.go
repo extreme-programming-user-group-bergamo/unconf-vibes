@@ -56,6 +56,13 @@ func (c *Client) CreateBooking(ctx context.Context, accessToken string, input Cr
 		}
 	}
 
+	if resp.StatusCode() == http.StatusNotFound {
+		switch errEnvelope.Error.Code {
+		case "not_found":
+			return nil, fmt.Errorf("failed to create booking: %w", ErrRoomNotFound)
+		}
+	}
+
 	if resp.IsError() {
 		return nil, fmt.Errorf("failed to create booking: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
 	}

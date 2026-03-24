@@ -747,3 +747,24 @@ func TestCreateBooking_AlreadyBooked(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrAlreadyBooked)
 }
+
+func TestCreateBooking_RoomNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "not_found",
+				"message": "room not found",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	booking, err := c.CreateBooking(context.Background(), "access-token", CreateBookingRequest{})
+
+	assert.Nil(t, booking)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomNotFound)
+}
