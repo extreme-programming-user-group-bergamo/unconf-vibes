@@ -11,12 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/katurdays/unconf/internal/client"
 	tuirooms "github.com/katurdays/unconf/internal/tui/rooms"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type mockRoomsClient struct {
-	listRoomsFn func(ctx context.Context, slug string) ([]client.RoomResponse, error)
+	listRoomsFn     func(ctx context.Context, slug string) ([]client.RoomResponse, error)
+	createBookingFn func(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
 }
 
 func (m *mockRoomsClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
@@ -24,6 +26,14 @@ func (m *mockRoomsClient) ListRooms(ctx context.Context, slug string) ([]client.
 		return m.listRoomsFn(ctx, slug)
 	}
 	return []client.RoomResponse{}, nil
+}
+
+func (m *mockRoomsClient) CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error) {
+	if m.createBookingFn != nil {
+		return m.createBookingFn(ctx, input)
+	}
+
+	return &client.BookingResponse{}, nil
 }
 
 type mockRoomsContextStore struct {
@@ -59,12 +69,6 @@ type fakeSelectionModel struct {
 
 func (m fakeSelectionModel) BookingSelection() (tuirooms.BookingSelection, bool) {
 	return m.selection, m.ok
-}
-
-type errWriter struct{}
-
-func (errWriter) Write(_ []byte) (int, error) {
-	return 0, io.ErrClosedPipe
 }
 
 func TestRoomsCmd_FallbackWhenTerminalUnsupported(t *testing.T) {
@@ -282,7 +286,7 @@ func TestDefaultTerminalCapabilityChecker_TERMNormal(t *testing.T) {
 	assert.True(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
 }
 
-func TestEmitBookingHandoffMessage_PrintsSelectionWhenAvailable(t *testing.T) {
+func TestExtractBookingSelection_ReturnsSelectionWhenAvailable(t *testing.T) {
 	runModel := fakeSelectionModel{
 		selection: tuirooms.BookingSelection{
 			ConferenceSlug: "socrates-26",
@@ -291,33 +295,36 @@ func TestEmitBookingHandoffMessage_PrintsSelectionWhenAvailable(t *testing.T) {
 		ok: true,
 	}
 
-	var out bytes.Buffer
-	err := emitBookingHandoffMessage(&out, runModel)
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "Booking flow handoff")
-	assert.Contains(t, out.String(), "conference=socrates-26")
-	assert.Contains(t, out.String(), "room=304")
+	selection, ok := extractBookingSelection(runModel)
+	require.True(t, ok)
+	assert.Equal(t, "socrates-26", selection.ConferenceSlug)
+	assert.Equal(t, "304", selection.Room.RoomNumber)
 }
 
-func TestEmitBookingHandoffMessage_NoSelectionNoOutput(t *testing.T) {
+func TestExtractBookingSelection_NoSelection(t *testing.T) {
 	runModel := fakeSelectionModel{ok: false}
-	var out bytes.Buffer
-
-	err := emitBookingHandoffMessage(&out, runModel)
-	require.NoError(t, err)
-	assert.Empty(t, out.String())
+	selection, ok := extractBookingSelection(runModel)
+	require.False(t, ok)
+	assert.Equal(t, tuirooms.BookingSelection{}, selection)
 }
 
-func TestEmitBookingHandoffMessage_WriteFailure(t *testing.T) {
-	runModel := fakeSelectionModel{
-		selection: tuirooms.BookingSelection{
-			ConferenceSlug: "socrates-26",
-			Room:           client.RoomResponse{ID: 1, RoomNumber: "101"},
-		},
-		ok: true,
+func TestRunBookingWizardFlow_LaunchFailureIncludesContext(t *testing.T) {
+	originalLaunch := launchBookingWizard
+	t.Cleanup(func() {
+		launchBookingWizard = originalLaunch
+	})
+
+	launchBookingWizard = func(_ tea.Model) (tea.Model, error) {
+		return nil, io.ErrUnexpectedEOF
 	}
 
-	err := emitBookingHandoffMessage(errWriter{}, runModel)
+	err := runBookingWizardFlow(
+		&cobra.Command{},
+		&mockRoomsClient{},
+		tuirooms.BookingSelection{ConferenceSlug: "socrates-26", Room: client.RoomResponse{RoomNumber: "101"}},
+	)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to write booking handoff message")
+	assert.Contains(t, err.Error(), "failed to launch booking wizard")
+	assert.Contains(t, err.Error(), "socrates-26")
+	assert.Contains(t, err.Error(), "101")
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -14,12 +13,14 @@ import (
 	"github.com/katurdays/unconf/internal/client"
 	"github.com/katurdays/unconf/internal/tui/common"
 	tuirooms "github.com/katurdays/unconf/internal/tui/rooms"
+	tuiwizard "github.com/katurdays/unconf/internal/tui/wizard"
 	"github.com/spf13/cobra"
 )
 
 // RoomsClient defines the room listing API contract.
 type RoomsClient interface {
 	ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error)
+	CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
 }
 
 // RoomsContextStore defines the interface for reading active conference context.
@@ -32,6 +33,14 @@ type terminalCapabilityChecker interface {
 }
 
 type defaultTerminalCapabilityChecker struct{}
+
+var launchRoomsExplorer = func(model tea.Model) (tea.Model, error) {
+	return tea.NewProgram(model).Run()
+}
+
+var launchBookingWizard = func(model tea.Model) (tea.Model, error) {
+	return tea.NewProgram(model).Run()
+}
 
 var terminalStdoutStat = func() (os.FileMode, error) {
 	stdoutInfo, err := os.Stdout.Stat()
@@ -127,40 +136,47 @@ func runRooms(cmd *cobra.Command, roomsClient RoomsClient, checker terminalCapab
 	slog.Info("rooms: starting interactive explorer", "slug", slug)
 
 	model := tuirooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
-	program := tea.NewProgram(model)
-	runModel, err := program.Run()
+	runModel, err := launchRoomsExplorer(model)
 	if err != nil {
 		return fmt.Errorf("failed to launch rooms explorer: %w", err)
 	}
 
-	if err := emitBookingHandoffMessage(cmd.OutOrStdout(), runModel); err != nil {
+	selection, selected := extractBookingSelection(runModel)
+	if !selected {
+		return nil
+	}
+
+	if err := runBookingWizardFlow(cmd, roomsClient, selection); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func emitBookingHandoffMessage(out io.Writer, runModel tea.Model) error {
+func extractBookingSelection(runModel tea.Model) (tuirooms.BookingSelection, bool) {
 	selectionProvider, ok := runModel.(interface {
 		BookingSelection() (tuirooms.BookingSelection, bool)
 	})
 	if !ok {
-		return nil
+		return tuirooms.BookingSelection{}, false
 	}
 
-	selection, selected := selectionProvider.BookingSelection()
-	if !selected {
-		return nil
-	}
+	return selectionProvider.BookingSelection()
+}
 
-	if _, err := fmt.Fprintf(
-		out,
-		"Booking flow handoff: conference=%s room=%s (id=%d). Wizard entry point will be connected in Story 3.4.\n",
-		selection.ConferenceSlug,
-		selection.Room.RoomNumber,
-		selection.Room.ID,
-	); err != nil {
-		return fmt.Errorf("failed to write booking handoff message: %w", err)
+func runBookingWizardFlow(cmd *cobra.Command, roomsClient RoomsClient, selection tuirooms.BookingSelection) error {
+	wizardModel := tuiwizard.NewModel(
+		cmd.Context(),
+		tuiwizard.RoomSelection{
+			ConferenceSlug: selection.ConferenceSlug,
+			Room:           selection.Room,
+		},
+		roomsClient.CreateBooking,
+		common.NewStyles(),
+	)
+
+	if _, err := launchBookingWizard(wizardModel); err != nil {
+		return fmt.Errorf("failed to launch booking wizard for room %s in conference %s: %w", selection.Room.RoomNumber, selection.ConferenceSlug, err)
 	}
 
 	return nil

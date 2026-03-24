@@ -660,3 +660,90 @@ func TestUpdateMe_NetworkError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to update user profile")
 }
+
+func TestCreateBooking_Success(t *testing.T) {
+	input := CreateBookingRequest{
+		RoomID:         15,
+		ConferenceID:   3,
+		PrivacySetting: "private",
+		Notes:          "wheelchair access needed",
+	}
+
+	expected := BookingResponse{
+		ID:             44,
+		RoomID:         15,
+		ConferenceID:   3,
+		Status:         "requested",
+		PrivacySetting: "private",
+		Notes:          "wheelchair access needed",
+		CreatedAt:      "2026-03-24T12:00:00Z",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/bookings", r.URL.Path)
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+
+		var body CreateBookingRequest
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, input.RoomID, body.RoomID)
+		assert.Equal(t, input.ConferenceID, body.ConferenceID)
+		assert.Equal(t, input.PrivacySetting, body.PrivacySetting)
+		assert.Equal(t, input.Notes, body.Notes)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	booking, err := c.CreateBooking(context.Background(), "access-token", input)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(44), booking.ID)
+	assert.Equal(t, "requested", booking.Status)
+	assert.Equal(t, "private", booking.PrivacySetting)
+}
+
+func TestCreateBooking_RoomFull(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "room_full",
+				"message": "room is at capacity",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	booking, err := c.CreateBooking(context.Background(), "access-token", CreateBookingRequest{})
+
+	assert.Nil(t, booking)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomFull)
+}
+
+func TestCreateBooking_AlreadyBooked(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "already_booked",
+				"message": "booking already exists",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	booking, err := c.CreateBooking(context.Background(), "access-token", CreateBookingRequest{})
+
+	assert.Nil(t, booking)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrAlreadyBooked)
+}
