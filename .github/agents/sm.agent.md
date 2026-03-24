@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Scrum Master"
 description: "Activates the Scrum Master agent persona."
 ---
 

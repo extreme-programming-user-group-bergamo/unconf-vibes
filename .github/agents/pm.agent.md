@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Product Manager"
 description: "Activates the Product Manager agent persona."
 ---
 

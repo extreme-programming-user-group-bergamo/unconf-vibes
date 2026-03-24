@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] QA"
 description: "Activates the Test Architect & Quality Advisor agent persona."
 ---
 

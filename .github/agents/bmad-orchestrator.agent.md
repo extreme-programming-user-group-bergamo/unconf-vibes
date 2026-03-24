@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Orchestrator"
 description: "Activates the BMad Master Orchestrator agent persona."
 ---
 

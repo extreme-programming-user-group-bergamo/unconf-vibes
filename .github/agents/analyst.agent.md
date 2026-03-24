@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Business Analyst"
 description: "Activates the Business Analyst agent persona."
 ---
 

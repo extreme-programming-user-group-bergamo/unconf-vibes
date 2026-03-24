@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] UX Expert"
 description: "Activates the UX Expert agent persona."
 ---
 

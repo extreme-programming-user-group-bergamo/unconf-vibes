@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Product Owner"
 description: "Activates the Product Owner agent persona."
 ---
 

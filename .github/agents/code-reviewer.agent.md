@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Code Reviewer"
 description: 'An agent to perform comprehensive code reviews, providing actionable feedback on security, performance, code quality, architecture, and testing.'
 model: GPT-5 mini (copilot)
 ---
