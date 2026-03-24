@@ -15,6 +15,7 @@ type FetchRoomsFunc func(ctx context.Context, conferenceSlug string) ([]client.R
 
 // Model is the Bubble Tea model for room exploration.
 type Model struct {
+	ctx            context.Context
 	conferenceSlug string
 	fetchRooms     FetchRoomsFunc
 	styles         common.Styles
@@ -26,8 +27,13 @@ type Model struct {
 }
 
 // NewModel creates a room explorer model with loading state enabled.
-func NewModel(conferenceSlug string, fetchRooms FetchRoomsFunc, styles common.Styles) Model {
+func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsFunc, styles common.Styles) Model {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	return Model{
+		ctx:            ctx,
 		conferenceSlug: conferenceSlug,
 		fetchRooms:     fetchRooms,
 		styles:         styles,
@@ -47,7 +53,7 @@ func (m Model) loadRoomsCmd() tea.Cmd {
 			return RoomsLoadErrMsg{Err: fmt.Errorf("rooms loader is not configured")}
 		}
 
-		rooms, err := m.fetchRooms(context.Background(), m.conferenceSlug)
+		rooms, err := m.fetchRooms(m.ctx, m.conferenceSlug)
 		if err != nil {
 			return RoomsLoadErrMsg{Err: err}
 		}

@@ -13,7 +13,7 @@ import (
 )
 
 func TestModel_InitStartsLoadingAndTransitionsToLoaded(t *testing.T) {
-	model := NewModel("socrates-26", func(_ context.Context, slug string) ([]client.RoomResponse, error) {
+	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, slug string) ([]client.RoomResponse, error) {
 		assert.Equal(t, "socrates-26", slug)
 		return []client.RoomResponse{{RoomNumber: "101", RoomType: "double", SpotsAvailable: 1, Capacity: 2}}, nil
 	}, common.NewStyles())
@@ -36,7 +36,7 @@ func TestModel_InitStartsLoadingAndTransitionsToLoaded(t *testing.T) {
 
 func TestModel_UpdateTransitionsToErrorState(t *testing.T) {
 	expectedErr := errors.New("boom")
-	model := NewModel("socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
+	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return nil, expectedErr
 	}, common.NewStyles())
 
@@ -52,7 +52,7 @@ func TestModel_UpdateTransitionsToErrorState(t *testing.T) {
 }
 
 func TestModel_UpdateNavigation(t *testing.T) {
-	model := NewModel("socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
+	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return []client.RoomResponse{
 			{RoomNumber: "101", RoomType: "double", SpotsAvailable: 1, Capacity: 2},
 			{RoomNumber: "102", RoomType: "single", SpotsAvailable: 0, Capacity: 1},
@@ -67,4 +67,17 @@ func TestModel_UpdateNavigation(t *testing.T) {
 
 	prev, _ := next.(Model).Update(tea.KeyMsg{Type: tea.KeyUp})
 	assert.Equal(t, 0, prev.(Model).selected)
+}
+
+func TestModel_InitPropagatesProvidedContext(t *testing.T) {
+	type ctxKey string
+	const requestIDKey ctxKey = "request-id"
+
+	ctx := context.WithValue(context.Background(), requestIDKey, "req-123")
+	model := NewModel(ctx, "socrates-26", func(fetchCtx context.Context, _ string) ([]client.RoomResponse, error) {
+		assert.Equal(t, "req-123", fetchCtx.Value(requestIDKey))
+		return []client.RoomResponse{}, nil
+	}, common.NewStyles())
+
+	_ = model.Init()()
 }

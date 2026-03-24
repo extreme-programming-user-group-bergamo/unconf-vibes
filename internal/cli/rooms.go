@@ -100,7 +100,7 @@ func runRooms(cmd *cobra.Command, roomsClient RoomsClient, checker terminalCapab
 
 	slog.Info("rooms: starting interactive explorer", "slug", slug)
 
-	model := uitrooms.NewModel(slug, roomsClient.ListRooms, common.NewStyles())
+	model := uitrooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
 	program := tea.NewProgram(model)
 	if _, err := program.Run(); err != nil {
 		return fmt.Errorf("failed to launch rooms explorer: %w", err)
