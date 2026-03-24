@@ -72,11 +72,7 @@ func (defaultTerminalCapabilityChecker) SupportsInteractiveUI() bool {
 	}
 
 	term := strings.TrimSpace(strings.ToLower(terminalEnv("TERM")))
-	if term == "" || term == "dumb" {
-		return false
-	}
-
-	return true
+	return term != "dumb"
 }
 
 func newRoomsCmd(roomsClient RoomsClient, ctxStore RoomsContextStore) *cobra.Command {

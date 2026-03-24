@@ -188,7 +188,7 @@ func TestDefaultTerminalCapabilityChecker_NonTTYStdin(t *testing.T) {
 	assert.False(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
 }
 
-func TestDefaultTerminalCapabilityChecker_TERMUnset(t *testing.T) {
+func TestDefaultTerminalCapabilityChecker_TERMUnsetAllowed(t *testing.T) {
 	originalStdoutStat := terminalStdoutStat
 	originalStdinStat := terminalStdinStat
 	originalTermEnv := terminalEnv
@@ -208,7 +208,7 @@ func TestDefaultTerminalCapabilityChecker_TERMUnset(t *testing.T) {
 		return ""
 	}
 
-	assert.False(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
+	assert.True(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
 }
 
 func TestDefaultTerminalCapabilityChecker_TERMDumb(t *testing.T) {
