@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -127,8 +128,39 @@ func runRooms(cmd *cobra.Command, roomsClient RoomsClient, checker terminalCapab
 
 	model := tuirooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
 	program := tea.NewProgram(model)
-	if _, err := program.Run(); err != nil {
+	runModel, err := program.Run()
+	if err != nil {
 		return fmt.Errorf("failed to launch rooms explorer: %w", err)
+	}
+
+	if err := emitBookingHandoffMessage(cmd.OutOrStdout(), runModel); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func emitBookingHandoffMessage(out io.Writer, runModel tea.Model) error {
+	selectionProvider, ok := runModel.(interface {
+		BookingSelection() (tuirooms.BookingSelection, bool)
+	})
+	if !ok {
+		return nil
+	}
+
+	selection, selected := selectionProvider.BookingSelection()
+	if !selected {
+		return nil
+	}
+
+	if _, err := fmt.Fprintf(
+		out,
+		"Booking flow handoff: conference=%s room=%s (id=%d). Wizard entry point will be connected in Story 3.4.\n",
+		selection.ConferenceSlug,
+		selection.Room.RoomNumber,
+		selection.Room.ID,
+	); err != nil {
+		return fmt.Errorf("failed to write booking handoff message: %w", err)
 	}
 
 	return nil

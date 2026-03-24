@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/katurdays/unconf/internal/client"
+	tuirooms "github.com/katurdays/unconf/internal/tui/rooms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +43,28 @@ type mockTerminalChecker struct {
 
 func (m mockTerminalChecker) SupportsInteractiveUI() bool {
 	return m.supports
+}
+
+type fakeTeaModel struct{}
+
+func (m fakeTeaModel) Init() tea.Cmd                           { return nil }
+func (m fakeTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m fakeTeaModel) View() string                            { return "" }
+
+type fakeSelectionModel struct {
+	fakeTeaModel
+	selection tuirooms.BookingSelection
+	ok        bool
+}
+
+func (m fakeSelectionModel) BookingSelection() (tuirooms.BookingSelection, bool) {
+	return m.selection, m.ok
+}
+
+type errWriter struct{}
+
+func (errWriter) Write(_ []byte) (int, error) {
+	return 0, io.ErrClosedPipe
 }
 
 func TestRoomsCmd_FallbackWhenTerminalUnsupported(t *testing.T) {
@@ -255,4 +280,44 @@ func TestDefaultTerminalCapabilityChecker_TERMNormal(t *testing.T) {
 	}
 
 	assert.True(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
+}
+
+func TestEmitBookingHandoffMessage_PrintsSelectionWhenAvailable(t *testing.T) {
+	runModel := fakeSelectionModel{
+		selection: tuirooms.BookingSelection{
+			ConferenceSlug: "socrates-26",
+			Room:           client.RoomResponse{ID: 9, RoomNumber: "304"},
+		},
+		ok: true,
+	}
+
+	var out bytes.Buffer
+	err := emitBookingHandoffMessage(&out, runModel)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "Booking flow handoff")
+	assert.Contains(t, out.String(), "conference=socrates-26")
+	assert.Contains(t, out.String(), "room=304")
+}
+
+func TestEmitBookingHandoffMessage_NoSelectionNoOutput(t *testing.T) {
+	runModel := fakeSelectionModel{ok: false}
+	var out bytes.Buffer
+
+	err := emitBookingHandoffMessage(&out, runModel)
+	require.NoError(t, err)
+	assert.Empty(t, out.String())
+}
+
+func TestEmitBookingHandoffMessage_WriteFailure(t *testing.T) {
+	runModel := fakeSelectionModel{
+		selection: tuirooms.BookingSelection{
+			ConferenceSlug: "socrates-26",
+			Room:           client.RoomResponse{ID: 1, RoomNumber: "101"},
+		},
+		ok: true,
+	}
+
+	err := emitBookingHandoffMessage(errWriter{}, runModel)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to write booking handoff message")
 }
