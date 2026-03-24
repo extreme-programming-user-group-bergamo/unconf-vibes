@@ -13,8 +13,10 @@
     "make": true,
     "git add": true,
     "git commit": true,
-    "go test": true,
+    "git rev-parse": true,
     "go build": true,
+    "go mod": true,
+    "go test": true,
     "gofmt": true
   }
 }

@@ -1,0 +1,47 @@
+schema: 1
+story: "3.2"
+story_title: "TUI Framework Setup"
+gate: PASS
+status_reason: "Previously reported context-propagation and limited-color evidence concerns are resolved; targeted and regression tests in impacted packages pass."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-03-24T02:30:00Z"
+
+waiver: { active: false }
+
+top_issues: []
+
+quality_score: 96
+expires: "2026-04-07T00:00:00Z"
+
+evidence:
+  tests_reviewed: 10
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No auth/data exposure concerns introduced in reviewed scope; URL path escaping is in place for room-list endpoint calls."
+  performance:
+    status: PASS
+    notes: "Single call data load and lightweight fallback rendering."
+  reliability:
+    status: PASS
+    notes: "Request-scoped context now propagates through async TUI room loading path, preserving cancellation/deadline behavior."
+  maintainability:
+    status: PASS
+    notes: "Focused limited-color style tests now lock in adaptive palette and emphasis intent for shared TUI styles."
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 0, low: 0 }
+  recommendations:
+    must_fix: []
+    monitor: []
+
+recommendations:
+  immediate: []
+  future:
+    - action: "Add a lightweight cancellation-focused unit test to assert fetch cancellation behavior remains intact under future refactors"
+      refs: ["internal/tui/rooms/model_test.go"]
