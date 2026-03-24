@@ -6,7 +6,7 @@ For project architecture, coding rules, and conventions see `AGENTS.md`.
 ## Rules
 
 1. When the assistant needs questions, menus, or clarification from the user, the assistant shall use the `user-input` MCP tools (`user_elicitation` or `user_input`).
-2. Before finalizing any output, the assistant shall ask for confirmation via `user_elicitation` and shall continue iterating until the user confirms.
+2. Use low-interruption behavior by default: do not require confirmation before every output. Ask confirmation via `user_elicitation` only for required workflow checkpoints, blocking ambiguities, risky/destructive actions, or when explicitly requested by the user.
 3. If an MCP tool call fails, the assistant shall retry it exactly once before proceeding without it.
 
 ## Agent Behavior Rules
@@ -18,5 +18,5 @@ For project architecture, coding rules, and conventions see `AGENTS.md`.
 ## VERIFY before responding
 
 1. Did I use `user-input` MCP for every question or clarification?
-2. Did I confirm completion with the user via `user_elicitation` before finalizing?
+2. Did I request user confirmation only where required (checkpoints, blockers, risky actions, or explicit user request)?
 3. If an MCP call failed, did I retry exactly once?
