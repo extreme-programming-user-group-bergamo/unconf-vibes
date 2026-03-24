@@ -1,34 +1,24 @@
 schema: 1
 story: "3.2"
 story_title: "TUI Framework Setup"
-gate: CONCERNS
-status_reason: "Core functionality is implemented and tested, but context propagation in async TUI I/O does not fully meet coding standards and AC5 lacks direct automated palette evidence."
+gate: PASS
+status_reason: "Previously reported context-propagation and limited-color evidence concerns are resolved; targeted and regression tests in impacted packages pass."
 reviewer: "Quinn (Test Architect)"
-updated: "2026-03-24T00:00:00Z"
+updated: "2026-03-24T02:30:00Z"
 
 waiver: { active: false }
 
-top_issues:
-  - severity: medium
-    summary: "Async room loading uses context.Background() instead of caller-propagated context"
-    details: "The model load command performs I/O via fetchRooms(context.Background(), ...) which bypasses cancellation/deadline propagation guidance in coding standards."
-    suggested_owner: dev
-    refs: ["internal/tui/rooms/model.go", "docs/architecture/16-coding-standards.md"]
-  - severity: low
-    summary: "No direct automated assertions for limited-color palette behavior"
-    details: "Adaptive colors are implemented, but tests validate rendering structure only, not style palette/contrast intent for AC5."
-    suggested_owner: dev
-    refs: ["internal/tui/common/styles.go", "internal/tui/common/header_test.go", "internal/tui/common/footer_test.go"]
+top_issues: []
 
-quality_score: 80
+quality_score: 96
 expires: "2026-04-07T00:00:00Z"
 
 evidence:
-  tests_reviewed: 19
-  risks_identified: 2
+  tests_reviewed: 10
+  risks_identified: 0
   trace:
-    ac_covered: [1, 2, 3, 4, 6]
-    ac_gaps: [5]
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
 
 nfr_validation:
   security:
@@ -38,16 +28,20 @@ nfr_validation:
     status: PASS
     notes: "Single call data load and lightweight fallback rendering."
   reliability:
-    status: CONCERNS
-    notes: "Context cancellation/deadline propagation gap in async TUI load path."
+    status: PASS
+    notes: "Request-scoped context now propagates through async TUI room loading path, preserving cancellation/deadline behavior."
   maintainability:
-    status: CONCERNS
-    notes: "Current tests are solid for behavior, but AC5 intent is not directly locked by focused style tests."
+    status: PASS
+    notes: "Focused limited-color style tests now lock in adaptive palette and emphasis intent for shared TUI styles."
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 0, low: 0 }
+  recommendations:
+    must_fix: []
+    monitor: []
 
 recommendations:
-  immediate:
-    - action: "Propagate request/cancellable context into TUI room loading path instead of context.Background()"
-      refs: ["internal/tui/rooms/model.go", "internal/cli/rooms.go"]
+  immediate: []
   future:
-    - action: "Add tests asserting style palette choices remain compatible with limited-color terminals"
-      refs: ["internal/tui/common/styles.go"]
+    - action: "Add a lightweight cancellation-focused unit test to assert fetch cancellation behavior remains intact under future refactors"
+      refs: ["internal/tui/rooms/model_test.go"]
