@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/katurdays/unconf/internal/client"
@@ -139,4 +140,76 @@ func TestRoomsCmd_FallbackPassesThroughGenericErrors(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "network timeout")
+}
+
+func TestDefaultTerminalCapabilityChecker_NonTTYStdout(t *testing.T) {
+	originalStdoutStat := terminalStdoutStat
+	originalTermEnv := terminalEnv
+	t.Cleanup(func() {
+		terminalStdoutStat = originalStdoutStat
+		terminalEnv = originalTermEnv
+	})
+
+	terminalStdoutStat = func() (os.FileMode, error) {
+		return 0, nil
+	}
+	terminalEnv = func(_ string) string {
+		return "xterm-256color"
+	}
+
+	assert.False(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
+}
+
+func TestDefaultTerminalCapabilityChecker_TERMUnset(t *testing.T) {
+	originalStdoutStat := terminalStdoutStat
+	originalTermEnv := terminalEnv
+	t.Cleanup(func() {
+		terminalStdoutStat = originalStdoutStat
+		terminalEnv = originalTermEnv
+	})
+
+	terminalStdoutStat = func() (os.FileMode, error) {
+		return os.ModeCharDevice, nil
+	}
+	terminalEnv = func(_ string) string {
+		return ""
+	}
+
+	assert.False(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
+}
+
+func TestDefaultTerminalCapabilityChecker_TERMDumb(t *testing.T) {
+	originalStdoutStat := terminalStdoutStat
+	originalTermEnv := terminalEnv
+	t.Cleanup(func() {
+		terminalStdoutStat = originalStdoutStat
+		terminalEnv = originalTermEnv
+	})
+
+	terminalStdoutStat = func() (os.FileMode, error) {
+		return os.ModeCharDevice, nil
+	}
+	terminalEnv = func(_ string) string {
+		return "dumb"
+	}
+
+	assert.False(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
+}
+
+func TestDefaultTerminalCapabilityChecker_TERMNormal(t *testing.T) {
+	originalStdoutStat := terminalStdoutStat
+	originalTermEnv := terminalEnv
+	t.Cleanup(func() {
+		terminalStdoutStat = originalStdoutStat
+		terminalEnv = originalTermEnv
+	})
+
+	terminalStdoutStat = func() (os.FileMode, error) {
+		return os.ModeCharDevice, nil
+	}
+	terminalEnv = func(_ string) string {
+		return "xterm-256color"
+	}
+
+	assert.True(t, defaultTerminalCapabilityChecker{}.SupportsInteractiveUI())
 }

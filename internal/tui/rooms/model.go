@@ -27,12 +27,12 @@ type Model struct {
 }
 
 // NewModel creates a room explorer model with loading state enabled.
-func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsFunc, styles common.Styles) Model {
+func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsFunc, styles common.Styles) *Model {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	return Model{
+	return &Model{
 		ctx:            ctx,
 		conferenceSlug: conferenceSlug,
 		fetchRooms:     fetchRooms,
@@ -43,11 +43,11 @@ func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsF
 }
 
 // Init starts asynchronous room loading.
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return m.loadRoomsCmd()
 }
 
-func (m Model) loadRoomsCmd() tea.Cmd {
+func (m *Model) loadRoomsCmd() tea.Cmd {
 	return func() tea.Msg {
 		if m.fetchRooms == nil {
 			return RoomsLoadErrMsg{Err: fmt.Errorf("rooms loader is not configured")}
@@ -63,7 +63,7 @@ func (m Model) loadRoomsCmd() tea.Cmd {
 }
 
 // Update handles async load events and keyboard navigation.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case RoomsLoadedMsg:
 		m.loading = false
@@ -96,7 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the room explorer screen.
-func (m Model) View() string {
+func (m *Model) View() string {
 	var b strings.Builder
 	b.WriteString(common.RenderHeader(m.styles, m.conferenceSlug))
 	b.WriteString("\n\n")

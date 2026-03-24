@@ -27,7 +27,7 @@ func TestModel_InitStartsLoadingAndTransitionsToLoaded(t *testing.T) {
 	updated, followUp := model.Update(msg)
 	require.Nil(t, followUp)
 
-	updatedModel := updated.(Model)
+	updatedModel := updated.(*Model)
 	assert.False(t, updatedModel.loading)
 	assert.NoError(t, updatedModel.err)
 	assert.Len(t, updatedModel.rooms, 1)
@@ -44,7 +44,7 @@ func TestModel_UpdateTransitionsToErrorState(t *testing.T) {
 	updated, followUp := model.Update(msg)
 	require.Nil(t, followUp)
 
-	updatedModel := updated.(Model)
+	updatedModel := updated.(*Model)
 	assert.False(t, updatedModel.loading)
 	assert.Error(t, updatedModel.err)
 	assert.ErrorIs(t, updatedModel.err, expectedErr)
@@ -60,13 +60,13 @@ func TestModel_UpdateNavigation(t *testing.T) {
 	}, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
-	state := loaded.(Model)
+	state := loaded.(*Model)
 
 	next, _ := state.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, 1, next.(Model).selected)
+	assert.Equal(t, 1, next.(*Model).selected)
 
-	prev, _ := next.(Model).Update(tea.KeyMsg{Type: tea.KeyUp})
-	assert.Equal(t, 0, prev.(Model).selected)
+	prev, _ := next.(*Model).Update(tea.KeyMsg{Type: tea.KeyUp})
+	assert.Equal(t, 0, prev.(*Model).selected)
 }
 
 func TestModel_InitPropagatesProvidedContext(t *testing.T) {

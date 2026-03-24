@@ -32,17 +32,30 @@ type terminalCapabilityChecker interface {
 
 type defaultTerminalCapabilityChecker struct{}
 
-func (defaultTerminalCapabilityChecker) SupportsInteractiveUI() bool {
+var terminalStdoutStat = func() (os.FileMode, error) {
 	stdoutInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	return stdoutInfo.Mode(), nil
+}
+
+var terminalEnv = func(key string) string {
+	return os.Getenv(key)
+}
+
+func (defaultTerminalCapabilityChecker) SupportsInteractiveUI() bool {
+	stdoutMode, err := terminalStdoutStat()
 	if err != nil {
 		return false
 	}
 
-	if stdoutInfo.Mode()&os.ModeCharDevice == 0 {
+	if stdoutMode&os.ModeCharDevice == 0 {
 		return false
 	}
 
-	term := strings.TrimSpace(strings.ToLower(os.Getenv("TERM")))
+	term := strings.TrimSpace(strings.ToLower(terminalEnv("TERM")))
 	if term == "" || term == "dumb" {
 		return false
 	}
