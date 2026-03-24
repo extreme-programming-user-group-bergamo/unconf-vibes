@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/katurdays/unconf/internal/client"
 	"github.com/katurdays/unconf/internal/tui/common"
-	uitrooms "github.com/katurdays/unconf/internal/tui/rooms"
+	tuirooms "github.com/katurdays/unconf/internal/tui/rooms"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +41,15 @@ var terminalStdoutStat = func() (os.FileMode, error) {
 	return stdoutInfo.Mode(), nil
 }
 
+var terminalStdinStat = func() (os.FileMode, error) {
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	return stdinInfo.Mode(), nil
+}
+
 var terminalEnv = func(key string) string {
 	return os.Getenv(key)
 }
@@ -50,8 +59,15 @@ func (defaultTerminalCapabilityChecker) SupportsInteractiveUI() bool {
 	if err != nil {
 		return false
 	}
+	stdinMode, err := terminalStdinStat()
+	if err != nil {
+		return false
+	}
 
 	if stdoutMode&os.ModeCharDevice == 0 {
+		return false
+	}
+	if stdinMode&os.ModeCharDevice == 0 {
 		return false
 	}
 
@@ -113,7 +129,7 @@ func runRooms(cmd *cobra.Command, roomsClient RoomsClient, checker terminalCapab
 
 	slog.Info("rooms: starting interactive explorer", "slug", slug)
 
-	model := uitrooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
+	model := tuirooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
 	program := tea.NewProgram(model)
 	if _, err := program.Run(); err != nil {
 		return fmt.Errorf("failed to launch rooms explorer: %w", err)
