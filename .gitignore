@@ -217,8 +217,9 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,intellij,visualstudiocode,go
 
-# Custom GitHub prompts
+# Custom GitHub prompts and skills
 .github/prompts/
+.github/skills/
 
 # Go build artifacts
 bin/
