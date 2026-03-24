@@ -1,58 +1,67 @@
 package cli
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 
-	"github.com/katurdays/unconf/internal/auth"
-	"github.com/katurdays/unconf/internal/client"
 	"github.com/spf13/cobra"
 )
 
-// StatusClient defines the interface for fetching the user profile.
-type StatusClient interface {
-	GetMe(ctx context.Context) (*client.UserResponse, error)
+// StatusClient defines the interface used by the status command.
+type StatusClient interface{}
+
+// StatusContextStore defines the interface for reading active conference context.
+type StatusContextStore interface {
+	GetActiveConference() (string, error)
 }
 
-func newStatusCmd(statusClient StatusClient) *cobra.Command {
-	return &cobra.Command{
+func newStatusCmd(statusClient StatusClient, ctxStore StatusContextStore) *cobra.Command {
+	var showAll bool
+
+	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show current authentication status and user profile",
-		Long:  "Displays your authenticated user profile by calling the API. Shows an error if not logged in.",
+		Short: "Show booking status",
+		Long:  "Displays your booking status for the active conference context. Use --all to include bookings across all conferences.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runStatus(cmd, statusClient)
+			return runStatus(cmd, statusClient, ctxStore, showAll)
 		},
 	}
+
+	cmd.Flags().BoolVar(&showAll, "all", false, "Show bookings across all conferences")
+
+	return cmd
 }
 
-func runStatus(cmd *cobra.Command, statusClient StatusClient) error {
-	ctx := cmd.Context()
+func runStatus(cmd *cobra.Command, _ StatusClient, ctxStore StatusContextStore, showAll bool) error {
 	out := cmd.OutOrStdout()
-	errOut := cmd.ErrOrStderr()
 
-	slog.Info("status: fetching user profile")
-
-	user, err := statusClient.GetMe(ctx)
+	activeConference, err := resolveStatusScope(ctxStore, showAll)
 	if err != nil {
-		if errors.Is(err, auth.ErrNotAuthenticated) {
-			_, _ = fmt.Fprintln(errOut, "You are not logged in. Run 'unconf login' to authenticate.")
-			return fmt.Errorf("failed to get user profile: %w", err)
-		}
-
-		if errors.Is(err, client.ErrSessionExpired) {
-			_, _ = fmt.Fprintln(errOut, "Your session has expired. Please run 'unconf login' to re-authenticate.")
-			return fmt.Errorf("failed to get user profile: %w", err)
-		}
-
-		_, _ = fmt.Fprintln(errOut, "Could not connect to the API. Please check your connection and try again.")
-		return fmt.Errorf("failed to get user profile: %w", err)
+		return err
 	}
 
-	_, _ = fmt.Fprintf(out, "Logged in as %s\n", user.DisplayName)
-	_, _ = fmt.Fprintf(out, "  Email:     %s\n", user.Email)
-	_, _ = fmt.Fprintf(out, "  GitHub ID: %s\n", user.GitHubID)
+	if !showAll && activeConference == "" {
+		_, _ = fmt.Fprintln(out, "No active conference context. Run 'unconf checkout <slug>' or use 'unconf status --all'.")
+		return nil
+	}
 
+	if showAll {
+		_, _ = fmt.Fprintln(out, "Checking booking status across all conferences...")
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(out, "Checking booking status for active conference %q...\n", activeConference)
 	return nil
+}
+
+func resolveStatusScope(ctxStore StatusContextStore, showAll bool) (string, error) {
+	if showAll {
+		return "", nil
+	}
+
+	conferenceSlug, err := ctxStore.GetActiveConference()
+	if err != nil {
+		return "", fmt.Errorf("failed to read conference context: %w", err)
+	}
+
+	return conferenceSlug, nil
 }

@@ -2,40 +2,28 @@ package cli
 
 import (
 	"bytes"
-	"context"
+	"errors"
 	"testing"
 
-	"github.com/katurdays/unconf/internal/auth"
-	"github.com/katurdays/unconf/internal/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type mockStatusClient struct {
-	getMeFn func(ctx context.Context) (*client.UserResponse, error)
+type mockStatusContextStore struct {
+	activeConference string
+	err              error
 }
 
-func (m *mockStatusClient) GetMe(ctx context.Context) (*client.UserResponse, error) {
-	if m.getMeFn != nil {
-		return m.getMeFn(ctx)
+func (m *mockStatusContextStore) GetActiveConference() (string, error) {
+	if m.err != nil {
+		return "", m.err
 	}
 
-	return nil, nil
+	return m.activeConference, nil
 }
 
-func TestStatusCmd_AuthenticatedUser(t *testing.T) {
-	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
-			return &client.UserResponse{
-				ID:          42,
-				GitHubID:    "12345",
-				Email:       "user@example.com",
-				DisplayName: "octocat",
-			}, nil
-		},
-	}
-
-	cmd := newStatusCmd(statusClient)
+func TestStatusCmd_UsesActiveConferenceScope(t *testing.T) {
+	cmd := newStatusCmd(struct{}{}, &mockStatusContextStore{activeConference: "socrates-2026"})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
@@ -43,65 +31,40 @@ func TestStatusCmd_AuthenticatedUser(t *testing.T) {
 
 	err := cmd.Execute()
 	require.NoError(t, err)
-
-	output := stdout.String()
-	assert.Contains(t, output, "Logged in as octocat")
-	assert.Contains(t, output, "user@example.com")
-	assert.Contains(t, output, "12345")
+	assert.Contains(t, stdout.String(), "active conference \"socrates-2026\"")
 }
 
-func TestStatusCmd_NotLoggedIn(t *testing.T) {
-	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
-			return nil, auth.ErrNotAuthenticated
-		},
-	}
+func TestStatusCmd_AllFlagBypassesContextRequirement(t *testing.T) {
+	cmd := newStatusCmd(struct{}{}, &mockStatusContextStore{activeConference: ""})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--all"})
 
-	cmd := newStatusCmd(statusClient)
-	var stderr bytes.Buffer
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "across all conferences")
+}
+
+func TestStatusCmd_NoActiveConferenceMessage(t *testing.T) {
+	cmd := newStatusCmd(struct{}{}, &mockStatusContextStore{})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "No active conference context")
+}
+
+func TestStatusCmd_ContextReadFailure(t *testing.T) {
+	cmd := newStatusCmd(struct{}{}, &mockStatusContextStore{err: errors.New("boom")})
 	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&stderr)
+	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, auth.ErrNotAuthenticated)
-	assert.Contains(t, stderr.String(), "not logged in")
-}
-
-func TestStatusCmd_SessionExpired(t *testing.T) {
-	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
-			return nil, client.ErrSessionExpired
-		},
-	}
-
-	cmd := newStatusCmd(statusClient)
-	var stderr bytes.Buffer
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.ErrorIs(t, err, client.ErrSessionExpired)
-	assert.Contains(t, stderr.String(), "session has expired")
-}
-
-func TestStatusCmd_NetworkError(t *testing.T) {
-	statusClient := &mockStatusClient{
-		getMeFn: func(_ context.Context) (*client.UserResponse, error) {
-			return nil, assert.AnError
-		},
-	}
-
-	cmd := newStatusCmd(statusClient)
-	var stderr bytes.Buffer
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.Contains(t, stderr.String(), "Could not connect")
+	assert.Contains(t, err.Error(), "failed to read conference context")
 }
