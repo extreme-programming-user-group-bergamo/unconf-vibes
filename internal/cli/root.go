@@ -59,6 +59,10 @@ func (c *statusCommandClient) GetConference(ctx context.Context, slug string) (*
 	return c.apiClient.GetConference(ctx, slug)
 }
 
+func (c *statusCommandClient) ListRoommateRequests(ctx context.Context) ([]client.RoommateRequestResponse, error) {
+	return c.authClient.ListRoommateRequests(ctx)
+}
+
 func NewRootCmd() *cobra.Command {
 	var configFile string
 

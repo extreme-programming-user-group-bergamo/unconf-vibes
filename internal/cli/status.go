@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 // StatusClient defines the interface used by the status command.
 type StatusClient interface {
 	ListBookings(ctx context.Context) ([]client.BookingResponse, error)
+	ListRoommateRequests(ctx context.Context) ([]client.RoommateRequestResponse, error)
 	GetConference(ctx context.Context, slug string) (*client.ConferenceResponse, error)
 }
 
@@ -57,8 +59,13 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 		return fmt.Errorf("failed to fetch bookings: %w", err)
 	}
 
+	requests, err := statusClient.ListRoommateRequests(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch roommate requests: %w", err)
+	}
+
 	if showAll {
-		renderStatusAllConferences(out, bookings)
+		renderStatusAllConferences(out, bookings, requests)
 		return nil
 	}
 
@@ -68,23 +75,24 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 	}
 
 	filtered := filterBookingsByConference(bookings, conference.ID, activeConference)
+	filteredRequests := filterRequestsByConference(requests, conference.ID, activeConference)
 	if len(filtered) == 0 {
 		_, _ = fmt.Fprintf(out, "No booking found for active conference %q.\n", activeConference)
 		return nil
 	}
 
-	renderStatusActiveConference(out, activeConference, filtered)
+	renderStatusActiveConference(out, activeConference, filtered, filteredRequests)
 	return nil
 }
 
-func renderStatusActiveConference(out interface{ Write([]byte) (int, error) }, activeConference string, bookings []client.BookingResponse) {
+func renderStatusActiveConference(out io.Writer, activeConference string, bookings []client.BookingResponse, requests []client.RoommateRequestResponse) {
 	_, _ = fmt.Fprintf(out, "Booking status for conference %q:\n", activeConference)
 	for i := range bookings {
-		renderBookingProjection(out, bookings[i], false)
+		renderBookingProjection(out, bookings[i], false, requests)
 	}
 }
 
-func renderStatusAllConferences(out interface{ Write([]byte) (int, error) }, bookings []client.BookingResponse) {
+func renderStatusAllConferences(out io.Writer, bookings []client.BookingResponse, requests []client.RoommateRequestResponse) {
 	if len(bookings) == 0 {
 		_, _ = fmt.Fprintln(out, "No bookings found across conferences.")
 		return
@@ -98,11 +106,12 @@ func renderStatusAllConferences(out interface{ Write([]byte) (int, error) }, boo
 
 	_, _ = fmt.Fprintln(out, "Booking status across all conferences:")
 	for i := range bookings {
-		renderBookingProjection(out, bookings[i], true)
+		confRequests := filterRequestsByConference(requests, bookings[i].ConferenceID, bookings[i].Conference.Slug)
+		renderBookingProjection(out, bookings[i], true, confRequests)
 	}
 }
 
-func renderBookingProjection(out interface{ Write([]byte) (int, error) }, booking client.BookingResponse, includeConference bool) {
+func renderBookingProjection(out io.Writer, booking client.BookingResponse, includeConference bool, requests []client.RoommateRequestResponse) {
 	if includeConference {
 		_, _ = fmt.Fprintf(out, "Conference: %s\n", bookingConferenceLabel(booking))
 	}
@@ -112,6 +121,62 @@ func renderBookingProjection(out interface{ Write([]byte) (int, error) }, bookin
 	_, _ = fmt.Fprintf(out, "  Dates:      %s - %s\n", bookingStartDate(booking), bookingEndDate(booking))
 	_, _ = fmt.Fprintf(out, "  Privacy:    %s\n", strings.TrimSpace(booking.PrivacySetting))
 	_, _ = fmt.Fprintf(out, "  Status:     %s\n", strings.TrimSpace(booking.Status))
+	renderRoommates(out, booking.Roommates)
+	renderPendingRequestPlaceholder(out, requests)
+}
+
+func renderRoommates(out io.Writer, roommates []client.BookingRoommateResponse) {
+	if len(roommates) == 0 {
+		_, _ = fmt.Fprintln(out, "  Roommates:  none")
+		return
+	}
+
+	_, _ = fmt.Fprintln(out, "  Roommates:")
+	for i := range roommates {
+		if strings.EqualFold(strings.TrimSpace(roommates[i].PrivacySetting), "private") {
+			_, _ = fmt.Fprintln(out, "    - Private attendee")
+			continue
+		}
+
+		name := strings.TrimSpace(roommates[i].DisplayName)
+		if name == "" {
+			name = "Attendee"
+		}
+
+		_, _ = fmt.Fprintf(out, "    - %s\n", name)
+	}
+}
+
+func renderPendingRequestPlaceholder(out io.Writer, requests []client.RoommateRequestResponse) {
+	incoming, outgoing := pendingRequestCounts(requests)
+
+	_, _ = fmt.Fprintln(out, "  Pending roommate requests (Epic 4 placeholder):")
+	_, _ = fmt.Fprintf(out, "    Incoming: %d\n", incoming)
+	_, _ = fmt.Fprintf(out, "    Outgoing: %d\n", outgoing)
+	_, _ = fmt.Fprintln(out, "    Note: Full roommate request workflow arrives in Epic 4.")
+}
+
+func pendingRequestCounts(requests []client.RoommateRequestResponse) (int, int) {
+	incoming := 0
+	outgoing := 0
+
+	for i := range requests {
+		if !strings.EqualFold(strings.TrimSpace(requests[i].Status), "pending") {
+			continue
+		}
+
+		direction := strings.ToLower(strings.TrimSpace(requests[i].Direction))
+		switch direction {
+		case "incoming":
+			incoming++
+		case "outgoing":
+			outgoing++
+		default:
+			outgoing++
+		}
+	}
+
+	return incoming, outgoing
 }
 
 func filterBookingsByConference(bookings []client.BookingResponse, conferenceID int64, conferenceSlug string) []client.BookingResponse {
@@ -131,6 +196,24 @@ func filterBookingsByConference(bookings []client.BookingResponse, conferenceID 
 
 		if strings.ToLower(strings.TrimSpace(bookings[i].Conference.Slug)) == normalizedSlug {
 			filtered = append(filtered, bookings[i])
+		}
+	}
+
+	return filtered
+}
+
+func filterRequestsByConference(requests []client.RoommateRequestResponse, conferenceID int64, conferenceSlug string) []client.RoommateRequestResponse {
+	filtered := make([]client.RoommateRequestResponse, 0, len(requests))
+	normalizedSlug := strings.ToLower(strings.TrimSpace(conferenceSlug))
+
+	for i := range requests {
+		if requests[i].ConferenceID > 0 && conferenceID > 0 && requests[i].ConferenceID == conferenceID {
+			filtered = append(filtered, requests[i])
+			continue
+		}
+
+		if strings.ToLower(strings.TrimSpace(requests[i].ConferenceSlug)) == normalizedSlug {
+			filtered = append(filtered, requests[i])
 		}
 	}
 

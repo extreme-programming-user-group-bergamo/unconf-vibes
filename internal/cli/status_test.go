@@ -14,6 +14,8 @@ import (
 type mockStatusClient struct {
 	bookings   []client.BookingResponse
 	bookErr    error
+	requests   []client.RoommateRequestResponse
+	requestErr error
 	conference *client.ConferenceResponse
 	confErr    error
 }
@@ -24,6 +26,14 @@ func (m *mockStatusClient) ListBookings(_ context.Context) ([]client.BookingResp
 	}
 
 	return m.bookings, nil
+}
+
+func (m *mockStatusClient) ListRoommateRequests(_ context.Context) ([]client.RoommateRequestResponse, error) {
+	if m.requestErr != nil {
+		return nil, m.requestErr
+	}
+
+	return m.requests, nil
 }
 
 func (m *mockStatusClient) GetConference(_ context.Context, _ string) (*client.ConferenceResponse, error) {
@@ -72,7 +82,15 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 					StartDate: "2026-09-10",
 					EndDate:   "2026-09-12",
 				},
+				Roommates: []client.BookingRoommateResponse{
+					{DisplayName: "Alice", PrivacySetting: "public"},
+					{DisplayName: "Bob", PrivacySetting: "private"},
+				},
 			},
+		},
+		requests: []client.RoommateRequestResponse{
+			{ConferenceID: 2, Status: "pending", Direction: "incoming"},
+			{ConferenceID: 2, Status: "pending", Direction: "outgoing"},
 		},
 	}
 
@@ -91,6 +109,12 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 	assert.Contains(t, output, "Price:      $189.50/night")
 	assert.Contains(t, output, "Dates:      2026-09-10 - 2026-09-12")
 	assert.Contains(t, output, "Privacy:    public")
+	assert.Contains(t, output, "Roommates:")
+	assert.Contains(t, output, "- Alice")
+	assert.Contains(t, output, "- Private attendee")
+	assert.Contains(t, output, "Pending roommate requests (Epic 4 placeholder)")
+	assert.Contains(t, output, "Incoming: 1")
+	assert.Contains(t, output, "Outgoing: 1")
 }
 
 func TestStatusCmd_AllFlagRendersAcrossConferences(t *testing.T) {
@@ -99,6 +123,7 @@ func TestStatusCmd_AllFlagRendersAcrossConferences(t *testing.T) {
 			{ConferenceSlug: "conf-a", Conference: client.BookingConferenceResponse{Name: "Conf A"}, Room: client.BookingRoomResponse{RoomNumber: "101", RoomType: "single", PricePerNight: 100}},
 			{ConferenceSlug: "conf-b", Conference: client.BookingConferenceResponse{Name: "Conf B"}, Room: client.BookingRoomResponse{RoomNumber: "202", RoomType: "double", PricePerNight: 220}},
 		},
+		requests: []client.RoommateRequestResponse{{ConferenceSlug: "conf-a", Status: "pending", Direction: "incoming"}},
 	}
 
 	cmd := newStatusCmd(statusClient, &mockStatusContextStore{})
