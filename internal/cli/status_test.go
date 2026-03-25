@@ -210,3 +210,114 @@ func TestStatusCmd_AuthErrorMapping_SessionExpired(t *testing.T) {
 	assert.ErrorIs(t, err, client.ErrSessionExpired)
 	assert.Contains(t, stderr.String(), "session has expired")
 }
+
+func TestStatusCmd_RequestFetchFailureMappings(t *testing.T) {
+	tests := []struct {
+		name            string
+		err             error
+		wantErrorIs     error
+		wantErrContains string
+		wantStderr      string
+	}{
+		{
+			name:            "not authenticated",
+			err:             auth.ErrNotAuthenticated,
+			wantErrorIs:     auth.ErrNotAuthenticated,
+			wantErrContains: "failed to fetch roommate requests",
+			wantStderr:      "You are not logged in",
+		},
+		{
+			name:            "session expired",
+			err:             client.ErrSessionExpired,
+			wantErrorIs:     client.ErrSessionExpired,
+			wantErrContains: "failed to fetch roommate requests",
+			wantStderr:      "session has expired",
+		},
+		{
+			name:            "unauthorized",
+			err:             client.ErrUnauthorized,
+			wantErrorIs:     client.ErrUnauthorized,
+			wantErrContains: "failed to fetch roommate requests",
+			wantStderr:      "not authorized",
+		},
+		{
+			name:            "generic fallback",
+			err:             errors.New("transport timeout"),
+			wantErrContains: "failed to fetch roommate requests",
+			wantStderr:      "Could not fetch status details from the API",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newStatusCmd(&mockStatusClient{
+				bookings:   []client.BookingResponse{},
+				requestErr: tc.err,
+			}, &mockStatusContextStore{activeConference: "conf-1"})
+			cmd.SetOut(&bytes.Buffer{})
+			var stderr bytes.Buffer
+			cmd.SetErr(&stderr)
+			cmd.SetArgs([]string{})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErrContains)
+			assert.Contains(t, stderr.String(), tc.wantStderr)
+
+			if tc.wantErrorIs != nil {
+				assert.ErrorIs(t, err, tc.wantErrorIs)
+				return
+			}
+
+			assert.NotErrorIs(t, err, auth.ErrNotAuthenticated)
+			assert.NotErrorIs(t, err, client.ErrSessionExpired)
+			assert.NotErrorIs(t, err, client.ErrUnauthorized)
+		})
+	}
+}
+
+func TestStatusCmd_ConferenceResolutionFailure_NotFound(t *testing.T) {
+	cmd := newStatusCmd(&mockStatusClient{
+		bookings: []client.BookingResponse{},
+		confErr:  client.ErrConferenceNotFound,
+	}, &mockStatusContextStore{activeConference: "conf-missing"})
+	cmd.SetOut(&bytes.Buffer{})
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, client.ErrConferenceNotFound)
+	assert.Contains(t, err.Error(), "failed to resolve conference context")
+	assert.Contains(t, stderr.String(), "Active conference \"conf-missing\" was not found")
+}
+
+func TestStatusCmd_ConferenceResolutionFailure_Generic(t *testing.T) {
+	cmd := newStatusCmd(&mockStatusClient{
+		bookings: []client.BookingResponse{},
+		confErr:  errors.New("conference service unavailable"),
+	}, &mockStatusContextStore{activeConference: "conf-1"})
+	cmd.SetOut(&bytes.Buffer{})
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve conference context")
+	assert.Contains(t, err.Error(), "conference service unavailable")
+	assert.Contains(t, stderr.String(), "Could not resolve active conference context")
+}
+
+func TestStatusCmd_AllFlag_NoBookingsMessage(t *testing.T) {
+	cmd := newStatusCmd(&mockStatusClient{bookings: []client.BookingResponse{}}, &mockStatusContextStore{})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--all"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "No bookings found across conferences")
+}
