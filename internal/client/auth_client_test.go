@@ -460,3 +460,67 @@ func TestAuthenticatedClient_CreateBooking_AutoRefresh(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new-access-token", newAccess)
 }
+
+func TestAuthenticatedClient_ListBookings_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/bookings", r.URL.Path)
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]BookingResponse{{ID: 101, ConferenceID: 2, Status: "confirmed"}})
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	bookings, err := ac.ListBookings(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, bookings, 1)
+	assert.Equal(t, int64(101), bookings[0].ID)
+}
+
+func TestAuthenticatedClient_ListRoommateRequests_AutoRefresh(t *testing.T) {
+	var requestCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/requests":
+			n := requestCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "token expired",
+					},
+				})
+				return
+			}
+
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode([]RoommateRequestResponse{{ID: 1, Status: "pending", Direction: "incoming"}})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	requests, err := ac.ListRoommateRequests(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	assert.Equal(t, int32(2), requestCallCount.Load())
+}

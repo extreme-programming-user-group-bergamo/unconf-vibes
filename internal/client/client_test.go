@@ -768,3 +768,109 @@ func TestCreateBooking_RoomNotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrRoomNotFound)
 }
+
+func TestListBookings_Success(t *testing.T) {
+	expected := []BookingResponse{
+		{
+			ID:             1,
+			RoomID:         11,
+			ConferenceID:   4,
+			ConferenceSlug: "socrates-2026",
+			Status:         "confirmed",
+			PrivacySetting: "public",
+			Room: BookingRoomResponse{
+				RoomNumber:    "101",
+				RoomType:      "double",
+				PricePerNight: 199.99,
+			},
+			Conference: BookingConferenceResponse{
+				ID:        4,
+				Slug:      "socrates-2026",
+				Name:      "SoCraTes 2026",
+				StartDate: "2026-09-10",
+				EndDate:   "2026-09-12",
+			},
+			Roommates: []BookingRoommateResponse{{DisplayName: "Alice", PrivacySetting: "public"}},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/bookings", r.URL.Path)
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	bookings, err := c.ListBookings(context.Background(), "access-token")
+
+	require.NoError(t, err)
+	require.Len(t, bookings, 1)
+	assert.Equal(t, "101", bookings[0].Room.RoomNumber)
+	assert.Equal(t, "socrates-2026", bookings[0].Conference.Slug)
+	assert.Equal(t, "Alice", bookings[0].Roommates[0].DisplayName)
+}
+
+func TestListBookings_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unauthorized",
+				"message": "invalid token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	bookings, err := c.ListBookings(context.Background(), "access-token")
+
+	assert.Nil(t, bookings)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+}
+
+func TestListRoommateRequests_Success(t *testing.T) {
+	expected := []RoommateRequestResponse{
+		{ID: 9, ConferenceID: 4, ConferenceSlug: "socrates-2026", Status: "pending", Direction: "incoming"},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/requests", r.URL.Path)
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(expected)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	requests, err := c.ListRoommateRequests(context.Background(), "access-token")
+
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	assert.Equal(t, "incoming", requests[0].Direction)
+}
+
+func TestListRoommateRequests_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unauthorized",
+				"message": "invalid token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	requests, err := c.ListRoommateRequests(context.Background(), "access-token")
+
+	assert.Nil(t, requests)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+}
