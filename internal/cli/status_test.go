@@ -211,6 +211,54 @@ func TestStatusCmd_AuthErrorMapping_SessionExpired(t *testing.T) {
 	assert.Contains(t, stderr.String(), "session has expired")
 }
 
+func TestStatusCmd_BookingsFetchFailureMappings(t *testing.T) {
+	tests := []struct {
+		name            string
+		err             error
+		wantErrorIs     error
+		wantErrContains string
+		wantStderr      string
+	}{
+		{
+			name:            "unauthorized",
+			err:             client.ErrUnauthorized,
+			wantErrorIs:     client.ErrUnauthorized,
+			wantErrContains: "failed to fetch bookings",
+			wantStderr:      "not authorized",
+		},
+		{
+			name:            "generic fallback",
+			err:             errors.New("transport timeout"),
+			wantErrContains: "failed to fetch bookings",
+			wantStderr:      "Could not fetch status details from the API",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newStatusCmd(&mockStatusClient{bookErr: tc.err}, &mockStatusContextStore{activeConference: "conf-1"})
+			cmd.SetOut(&bytes.Buffer{})
+			var stderr bytes.Buffer
+			cmd.SetErr(&stderr)
+			cmd.SetArgs([]string{})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErrContains)
+			assert.Contains(t, stderr.String(), tc.wantStderr)
+
+			if tc.wantErrorIs != nil {
+				assert.ErrorIs(t, err, tc.wantErrorIs)
+				return
+			}
+
+			assert.NotErrorIs(t, err, auth.ErrNotAuthenticated)
+			assert.NotErrorIs(t, err, client.ErrSessionExpired)
+			assert.NotErrorIs(t, err, client.ErrUnauthorized)
+		})
+	}
+}
+
 func TestStatusCmd_RequestFetchFailureMappings(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -320,4 +368,11 @@ func TestStatusCmd_AllFlag_NoBookingsMessage(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Contains(t, stdout.String(), "No bookings found across conferences")
+}
+
+func TestRenderRoommates_EmptyDisplayNameFallsBackToAttendee(t *testing.T) {
+	var out bytes.Buffer
+	renderRoommates(&out, []client.BookingRoommateResponse{{DisplayName: "   ", PrivacySetting: "public"}})
+
+	assert.Contains(t, out.String(), "- Attendee")
 }
