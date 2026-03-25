@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
+	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/client"
 	"github.com/spf13/cobra"
 )
@@ -56,12 +58,12 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 
 	bookings, err := statusClient.ListBookings(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fetch bookings: %w", err)
+		return handleStatusFetchError(cmd, err, "bookings")
 	}
 
 	requests, err := statusClient.ListRoommateRequests(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fetch roommate requests: %w", err)
+		return handleStatusFetchError(cmd, err, "roommate requests")
 	}
 
 	if showAll {
@@ -71,13 +73,19 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 
 	conference, confErr := statusClient.GetConference(ctx, activeConference)
 	if confErr != nil {
-		return fmt.Errorf("failed to resolve conference context %q: %w", activeConference, confErr)
+		if errors.Is(confErr, client.ErrConferenceNotFound) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Active conference %q was not found. Run 'unconf checkout <slug>' to switch context.\n", activeConference)
+			return fmt.Errorf("failed to resolve conference context: %w", client.ErrConferenceNotFound)
+		}
+
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Could not resolve active conference context. Please try again.")
+		return fmt.Errorf("failed to resolve conference context")
 	}
 
 	filtered := filterBookingsByConference(bookings, conference.ID, activeConference)
 	filteredRequests := filterRequestsByConference(requests, conference.ID, activeConference)
 	if len(filtered) == 0 {
-		_, _ = fmt.Fprintf(out, "No booking found for active conference %q.\n", activeConference)
+		_, _ = fmt.Fprintf(out, "No booking found for active conference %q. Run 'unconf book <room_number>' to create one, or use 'unconf status --all'.\n", activeConference)
 		return nil
 	}
 
@@ -299,4 +307,23 @@ func resolveStatusScope(ctxStore StatusContextStore, showAll bool) (string, erro
 	}
 
 	return conferenceSlug, nil
+}
+
+func handleStatusFetchError(cmd *cobra.Command, err error, resource string) error {
+	errOut := cmd.ErrOrStderr()
+
+	switch {
+	case errors.Is(err, auth.ErrNotAuthenticated):
+		_, _ = fmt.Fprintln(errOut, "You are not logged in. Run 'unconf login' to authenticate.")
+		return fmt.Errorf("failed to fetch %s: %w", resource, auth.ErrNotAuthenticated)
+	case errors.Is(err, client.ErrSessionExpired):
+		_, _ = fmt.Fprintln(errOut, "Your session has expired. Please run 'unconf login' to re-authenticate.")
+		return fmt.Errorf("failed to fetch %s: %w", resource, client.ErrSessionExpired)
+	case errors.Is(err, client.ErrUnauthorized):
+		_, _ = fmt.Fprintln(errOut, "You are not authorized. Please run 'unconf login' and try again.")
+		return fmt.Errorf("failed to fetch %s: %w", resource, client.ErrUnauthorized)
+	default:
+		_, _ = fmt.Fprintln(errOut, "Could not fetch status details from the API. Please try again.")
+		return fmt.Errorf("failed to fetch %s", resource)
+	}
 }

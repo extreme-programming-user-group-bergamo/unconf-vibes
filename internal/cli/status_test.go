@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +154,26 @@ func TestStatusCmd_NoActiveConferenceMessage(t *testing.T) {
 	assert.Contains(t, stdout.String(), "No active conference context")
 }
 
+func TestStatusCmd_NoBookingForActiveConferenceMessage(t *testing.T) {
+	statusClient := &mockStatusClient{
+		conference: &client.ConferenceResponse{ID: 99, Slug: "socrates-2026"},
+		bookings: []client.BookingResponse{
+			{ConferenceID: 42, ConferenceSlug: "other-conf"},
+		},
+	}
+
+	cmd := newStatusCmd(statusClient, &mockStatusContextStore{activeConference: "socrates-2026"})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "No booking found for active conference")
+	assert.Contains(t, stdout.String(), "unconf book <room_number>")
+}
+
 func TestStatusCmd_ContextReadFailure(t *testing.T) {
 	cmd := newStatusCmd(&mockStatusClient{}, &mockStatusContextStore{err: errors.New("boom")})
 	cmd.SetOut(&bytes.Buffer{})
@@ -162,4 +183,30 @@ func TestStatusCmd_ContextReadFailure(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read conference context")
+}
+
+func TestStatusCmd_AuthErrorMapping_NotAuthenticated(t *testing.T) {
+	cmd := newStatusCmd(&mockStatusClient{bookErr: auth.ErrNotAuthenticated}, &mockStatusContextStore{activeConference: "conf-1"})
+	cmd.SetOut(&bytes.Buffer{})
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, auth.ErrNotAuthenticated)
+	assert.Contains(t, stderr.String(), "not logged in")
+}
+
+func TestStatusCmd_AuthErrorMapping_SessionExpired(t *testing.T) {
+	cmd := newStatusCmd(&mockStatusClient{bookErr: client.ErrSessionExpired}, &mockStatusContextStore{activeConference: "conf-1"})
+	cmd.SetOut(&bytes.Buffer{})
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, client.ErrSessionExpired)
+	assert.Contains(t, stderr.String(), "session has expired")
 }
