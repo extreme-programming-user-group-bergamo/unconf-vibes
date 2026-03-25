@@ -82,12 +82,14 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 	conference, confErr := statusClient.GetConference(ctx, activeConference)
 	if confErr != nil {
 		if errors.Is(confErr, client.ErrConferenceNotFound) {
+			slog.Error("status: active conference context not found", "conference_slug", activeConference, "error", confErr)
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Active conference %q was not found. Run 'unconf checkout <slug>' to switch context.\n", activeConference)
-			return fmt.Errorf("failed to resolve conference context: %w", client.ErrConferenceNotFound)
+			return fmt.Errorf("failed to resolve conference context for %q: %w", activeConference, confErr)
 		}
 
+		slog.Error("status: failed to resolve active conference context", "conference_slug", activeConference, "error", confErr)
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Could not resolve active conference context. Please try again.")
-		return fmt.Errorf("failed to resolve conference context")
+		return fmt.Errorf("failed to resolve conference context for %q: %w", activeConference, confErr)
 	}
 
 	filtered := filterBookingsByConference(bookings, conference.ID, activeConference)
@@ -333,7 +335,8 @@ func handleStatusFetchError(cmd *cobra.Command, err error, resource string) erro
 		_, _ = fmt.Fprintln(errOut, "You are not authorized. Please run 'unconf login' and try again.")
 		return fmt.Errorf("failed to fetch %s: %w", resource, client.ErrUnauthorized)
 	default:
+		slog.Error("status: status fetch failed", "resource", resource, "error", err)
 		_, _ = fmt.Fprintln(errOut, "Could not fetch status details from the API. Please try again.")
-		return fmt.Errorf("failed to fetch %s", resource)
+		return fmt.Errorf("failed to fetch %s: %w", resource, err)
 	}
 }
