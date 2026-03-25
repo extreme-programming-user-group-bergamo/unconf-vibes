@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -56,6 +57,12 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 		return nil
 	}
 
+	scope := activeConference
+	if showAll {
+		scope = "all"
+	}
+	slog.Info("status: fetching booking status", "scope", scope)
+
 	bookings, err := statusClient.ListBookings(ctx)
 	if err != nil {
 		return handleStatusFetchError(cmd, err, "bookings")
@@ -68,6 +75,7 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 
 	if showAll {
 		renderStatusAllConferences(out, bookings, requests)
+		slog.Info("status: rendered booking status", "scope", "all", "bookings", len(bookings), "requests", len(requests))
 		return nil
 	}
 
@@ -86,10 +94,12 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 	filteredRequests := filterRequestsByConference(requests, conference.ID, activeConference)
 	if len(filtered) == 0 {
 		_, _ = fmt.Fprintf(out, "No booking found for active conference %q. Run 'unconf book <room_number>' to create one, or use 'unconf status --all'.\n", activeConference)
+		slog.Info("status: no booking found for active conference", "conference_slug", activeConference)
 		return nil
 	}
 
 	renderStatusActiveConference(out, activeConference, filtered, filteredRequests)
+	slog.Info("status: rendered booking status", "scope", activeConference, "bookings", len(filtered), "requests", len(filteredRequests))
 	return nil
 }
 
