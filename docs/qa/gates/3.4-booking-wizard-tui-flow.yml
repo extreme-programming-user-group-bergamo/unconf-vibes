@@ -1,0 +1,65 @@
+schema: 1
+story: '3.4'
+story_title: 'Story 3.4: Booking Wizard (TUI Flow)'
+gate: CONCERNS
+status_reason: 'Notes-step key handling conflicts with text entry and prevents common characters from being typed, so AC4 is only partially satisfied.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-03-24T19:08:19Z'
+quality_score: 88
+expires: '2026-04-07T19:08:19Z'
+
+top_issues:
+  - id: 'QA-3.4-001'
+    title: 'Step 3 notes field uses printable keys as navigation hotkeys'
+    severity: medium
+    finding: 'In notes entry, key n advances to review and key b navigates back, preventing users from entering those characters in free-form notes.'
+    suggested_action: 'Prioritize text entry over single-letter shortcuts in StepNotes and add regression tests for strings containing b and n.'
+    refs:
+      - 'internal/tui/wizard/model.go:176'
+      - 'internal/tui/wizard/model.go:178'
+      - 'internal/tui/wizard/model_test.go:61'
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 63
+  tests_executed:
+    - 'go test ./internal/cli ./internal/client ./internal/tui/wizard'
+  risks_identified:
+    count: 1
+  trace:
+    ac_covered: [1, 2, 3, 5, 6, 7, 8]
+    ac_gaps: [4]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Booking calls remain authenticated through AuthenticatedClient and token refresh flow.'
+  performance:
+    status: PASS
+    notes: 'Wizard state transitions are local and lightweight; no new heavy operations introduced in UI loop.'
+  reliability:
+    status: CONCERNS
+    notes: 'Input handling in StepNotes can trigger unintended navigation, degrading interaction reliability.'
+  maintainability:
+    status: PASS
+    notes: 'Separation of concerns across CLI, client, and TUI model/view remains clear and testable.'
+
+recommendations:
+  immediate:
+    - action: 'Adjust StepNotes key handling to avoid single-letter command collisions during note typing.'
+      refs:
+        - 'internal/tui/wizard/model.go:176'
+        - 'internal/tui/wizard/model.go:178'
+      suggested_owner: dev
+    - action: 'Add tests proving notes can include letters b and n without navigation side effects.'
+      refs:
+        - 'internal/tui/wizard/model_test.go'
+      suggested_owner: dev
+  future:
+    - action: 'Consider a small keymap abstraction per wizard step to prevent future shortcut/text conflicts.'
+      refs:
+        - 'internal/tui/wizard/model.go'
+      suggested_owner: dev

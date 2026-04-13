@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Architect"
 description: "Activates the Architect agent persona."
 ---
 

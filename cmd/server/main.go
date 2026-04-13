@@ -83,10 +83,16 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 
 	conferenceRepo := sqlite.NewConferenceRepository(db)
-	conferenceService := service.NewConferenceService(conferenceRepo)
+	roomRepo := sqlite.NewRoomRepository(db)
+	bookingRepo := sqlite.NewBookingRepository(db)
+
+	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
 
-	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler)
+	roomService := service.NewRoomService(roomRepo, bookingRepo, conferenceRepo, userRepository)
+	roomHandler := handlers.NewRoomHandler(roomService)
+
+	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,

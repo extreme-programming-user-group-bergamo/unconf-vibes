@@ -1,4 +1,5 @@
 ---
+name: "[BMAD] Dev"
 description: "Activates the Full Stack Developer agent persona."
 ---
 

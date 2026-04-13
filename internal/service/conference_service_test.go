@@ -90,7 +90,7 @@ func TestConferenceService_ListConferences_Success(t *testing.T) {
 			return []*models.Conference{upcomingConference(), pastConference()}, nil
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -107,7 +107,7 @@ func TestConferenceService_ListConferences_Empty(t *testing.T) {
 			return []*models.Conference{}, nil
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestConferenceService_ListConferences_RepoError(t *testing.T) {
 			return nil, repoErr
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	_, err := svc.ListConferences(context.Background())
 	require.Error(t, err)
@@ -137,7 +137,7 @@ func TestConferenceService_GetConference_Success(t *testing.T) {
 			return conf, nil
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	result, err := svc.GetConference(context.Background(), "active-conf")
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestConferenceService_GetConference_NotFound(t *testing.T) {
 			return nil, repository.ErrConferenceNotFound
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	_, err := svc.GetConference(context.Background(), "nonexistent")
 	require.Error(t, err)
@@ -166,7 +166,7 @@ func TestConferenceService_GetConference_RepoError(t *testing.T) {
 			return nil, repoErr
 		},
 	}
-	svc := NewConferenceService(repo)
+	svc := NewConferenceService(repo, &mockBookingRepository{})
 
 	_, err := svc.GetConference(context.Background(), "some-slug")
 	require.Error(t, err)
@@ -226,4 +226,62 @@ func TestConferenceService_DeriveStatus_ActiveOnStartDate(t *testing.T) {
 
 	status := DeriveStatusAt(conf, now)
 	assert.Equal(t, "active", status)
+}
+
+func TestConferenceService_ListConferences_AttendeeCountFromBookings(t *testing.T) {
+	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{upcomingConference()}, nil
+		},
+	}
+	bookingRepo := &mockBookingRepository{
+		countByConferenceFn: func(_ context.Context, confID int64) (int, error) {
+			assert.Equal(t, int64(1), confID)
+			return 5, nil
+		},
+	}
+	svc := NewConferenceService(repo, bookingRepo)
+
+	results, err := svc.ListConferences(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, 5, results[0].AttendeeCount)
+}
+
+func TestConferenceService_GetConference_AttendeeCountFromBookings(t *testing.T) {
+	conf := activeConference()
+	repo := &mockConferenceRepository{
+		getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) {
+			return conf, nil
+		},
+	}
+	bookingRepo := &mockBookingRepository{
+		countByConferenceFn: func(_ context.Context, _ int64) (int, error) {
+			return 3, nil
+		},
+	}
+	svc := NewConferenceService(repo, bookingRepo)
+
+	result, err := svc.GetConference(context.Background(), "active-conf")
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.AttendeeCount)
+}
+
+func TestConferenceService_ListConferences_BookingCountErrorDefaultsToZero(t *testing.T) {
+	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{upcomingConference()}, nil
+		},
+	}
+	bookingRepo := &mockBookingRepository{
+		countByConferenceFn: func(_ context.Context, _ int64) (int, error) {
+			return 0, errors.New("booking count failure")
+		},
+	}
+	svc := NewConferenceService(repo, bookingRepo)
+
+	results, err := svc.ListConferences(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, 0, results[0].AttendeeCount)
 }

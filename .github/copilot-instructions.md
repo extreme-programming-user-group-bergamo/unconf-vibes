@@ -1,77 +1,15 @@
-<agent-instructions project="UNCONF">
+# Copilot IDE Instructions
 
-<CRITICAL>
-ALWAYS: use `user-input` MCP for questions/menus/clarification
-NEVER: stop until user confirms complete
-ALWAYS: ask for confirmation using `user_elicitation` tool from `user-input` MCP before finalizing any output with the question: "Is the task complete and ready to be finalized?" and only finalize if the user confirms, otherwise keep iterating by asking for clarification or additional input until the user confirms completion via `user_elicitation` tool with the same question.
-RETRY: `user-input` failures once before proceeding
-</CRITICAL>
+These instructions govern how the AI assistant interacts with the user inside the IDE.
+For project architecture, coding rules, and conventions see `AGENTS.md`.
 
-<context>
-Go CLI+TUI for unconference registration
-CLI (Cobra/BubbleTea) → REST API (Gin) → SQLite
-CLI NEVER accesses DB directly
+## Rules
 
-cmd/unconf/        CLI entry
-cmd/server/        API entry  
-internal/cli/      Cobra commands
-internal/tui/      BubbleTea models
-internal/api/      Gin handlers
-internal/service/  Business logic
-internal/repository/ Data access
-internal/models/   Domain structs
-internal/client/   HTTP client
-internal/auth/     GitHub OAuth+PASETO
-migrations/        golang-migrate
-</context>
+1. When the assistant needs questions, menus, or clarification from the user, the assistant shall use the `user-input` MCP tools
+2. If an MCP tool call fails, the assistant shall retry it exactly once before proceeding without it.
 
-<rules priority="1">
-Repository: all DB via interfaces, no SQL in services
-  ✓ s.bookingRepo.Create(ctx, booking)
-  ✗ s.db.Exec("INSERT...")
-Errors: always wrap with context
-  ✓ fmt.Errorf("failed to X: %w", err)
-  ✗ return err
-Context: first param to all I/O functions
-</rules>
+## Agent Behavior Rules
 
-<rules priority="2">
-Logging: log/slog only, no fmt.Println
-Config: Viper wrapper, no os.Getenv
-DI: constructor injection, no globals
-</rules>
-
-<rules priority="3">
-Domain errors: internal/service/errors.go + errors.Is()
-</rules>
-
-<tui>
-Messages: VerbMsg suffix (RoomsLoadedMsg)
-Commands: tea.Cmd for async
-View: pure, Lip Gloss from tui/common/styles.go
-</tui>
-
-<naming>
-files: snake_case | packages: lowercase
-routes: kebab-case | tables: snake_case plural
-interfaces: PascalCase+verb
-</naming>
-
-<commands>
-make run-cli | make run-server | make test | make lint
-make migrate-up | make migrate-down
-</commands>
-
-<testing>
-unit: mock repos, table-driven
-integration: :memory: SQLite
-tui: manual | email: MailHog
-</testing>
-
-<docs>
-docs/architecture.md | docs/prd.md
-docs/architecture/coding-standards.md
-docs/architecture/source-tree.md
-</docs>
-
-</agent-instructions>
+3. The system shall match existing code style, conventions, and types found in the target package.
+4. The system shall not create custom scripts to edit files, nor add markdown files unless explicitly instructed.
+5. If summarizing context, the system shall include instruction to re-read the agent persona file and `.bmad-core/core-config.yaml`.

@@ -16,6 +16,36 @@ import (
 
 var Version = "v1.0.0-alpha"
 
+type roomsCommandClient struct {
+	listClient    *client.Client
+	bookingClient *client.AuthenticatedClient
+}
+
+type bookCommandClient struct {
+	roomsClient *client.Client
+	authClient  *client.AuthenticatedClient
+}
+
+func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
+	return c.listClient.ListRooms(ctx, slug)
+}
+
+func (c *roomsCommandClient) CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error) {
+	return c.bookingClient.CreateBooking(ctx, input)
+}
+
+func (c *bookCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
+	return c.roomsClient.ListRooms(ctx, slug)
+}
+
+func (c *bookCommandClient) GetMe(ctx context.Context) (*client.UserResponse, error) {
+	return c.authClient.GetMe(ctx)
+}
+
+func (c *bookCommandClient) CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error) {
+	return c.authClient.CreateBooking(ctx, input)
+}
+
 func NewRootCmd() *cobra.Command {
 	var configFile string
 
@@ -93,6 +123,14 @@ room browsing, and booking workflows.`,
 	}
 	apiClient := client.NewClient(apiEndpoint)
 	authClient := client.NewAuthenticatedClient(apiClient, store)
+	roomsClient := &roomsCommandClient{
+		listClient:    apiClient,
+		bookingClient: authClient,
+	}
+	bookClient := &bookCommandClient{
+		roomsClient: apiClient,
+		authClient:  authClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -112,6 +150,8 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newListCmd(apiClient))
 	rootCmd.AddCommand(newInfoCmd(apiClient, ctxManager))
 	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))
+	rootCmd.AddCommand(newRoomsCmd(roomsClient, ctxManager))
+	rootCmd.AddCommand(newBookCmd(bookClient, ctxManager))
 	rootCmd.AddCommand(newConfigCmd(authClient))
 
 	return rootCmd

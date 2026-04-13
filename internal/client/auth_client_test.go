@@ -389,3 +389,74 @@ func TestAuthenticatedClient_UpdateMe_RefreshFails_ReturnsSessionExpired(t *test
 	assert.ErrorIs(t, err, ErrSessionExpired)
 	assert.False(t, store.HasValidToken())
 }
+
+func TestAuthenticatedClient_CreateBooking_Success(t *testing.T) {
+	input := CreateBookingRequest{RoomID: 10, ConferenceID: 2, PrivacySetting: "public", Notes: "vegan meal"}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/bookings", r.URL.Path)
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(BookingResponse{ID: 77, RoomID: 10, ConferenceID: 2, Status: "requested", PrivacySetting: "public"})
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	booking, err := ac.CreateBooking(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(77), booking.ID)
+	assert.Equal(t, "requested", booking.Status)
+}
+
+func TestAuthenticatedClient_CreateBooking_AutoRefresh(t *testing.T) {
+	var bookingsCallCount atomic.Int32
+	input := CreateBookingRequest{RoomID: 10, ConferenceID: 2, PrivacySetting: "public"}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/bookings":
+			n := bookingsCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "token expired",
+					},
+				})
+				return
+			}
+
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(BookingResponse{ID: 99, RoomID: 10, ConferenceID: 2, Status: "requested", PrivacySetting: "public"})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	booking, err := ac.CreateBooking(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(99), booking.ID)
+	assert.Equal(t, int32(2), bookingsCallCount.Load())
+
+	newAccess, err := store.GetAccessToken()
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", newAccess)
+}

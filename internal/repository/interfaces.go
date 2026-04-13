@@ -25,3 +25,17 @@ type ConferenceRepository interface {
 	GetBySlug(ctx context.Context, slug string) (*models.Conference, error)
 	List(ctx context.Context) ([]*models.Conference, error)
 }
+
+type RoomRepository interface {
+	Create(ctx context.Context, room *models.Room) (*models.Room, error)
+	GetByID(ctx context.Context, id int64) (*models.Room, error)
+	ListByConference(ctx context.Context, conferenceID int64) ([]*models.Room, error)
+}
+
+type BookingRepository interface {
+	Create(ctx context.Context, booking *models.Booking) (*models.Booking, error)
+	GetByID(ctx context.Context, id int64) (*models.Booking, error)
+	ListByRoom(ctx context.Context, roomID int64) ([]*models.Booking, error)
+	ListByConference(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
+	CountByConference(ctx context.Context, conferenceID int64) (int, error)
+}

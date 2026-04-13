@@ -95,6 +95,39 @@ func (ac *AuthenticatedClient) UpdateMe(ctx context.Context, input UpdateProfile
 	return retryUser, nil
 }
 
+// CreateBooking creates a booking, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) CreateBooking(ctx context.Context, input CreateBookingRequest) (*BookingResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "CreateBooking")
+
+	booking, err := ac.client.CreateBooking(ctx, accessToken, input)
+	if err == nil {
+		return booking, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "CreateBooking")
+
+	retryBooking, retryErr := ac.client.CreateBooking(ctx, newAccessToken, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to create booking after token refresh: %w", retryErr)
+	}
+
+	return retryBooking, nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.
