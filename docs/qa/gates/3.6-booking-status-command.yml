@@ -1,0 +1,57 @@
+schema: 1
+story: '3.6'
+story_title: 'Story 3.6: Booking Status Command'
+gate: PASS
+status_reason: 'Re-review confirms both prior quality concerns are resolved: status paths preserve wrapped causes and the previously missing error-branch regressions are now covered and passing.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-03-25T23:00:00Z'
+quality_score: 97
+expires: '2026-04-08T23:00:00Z'
+
+top_issues:
+  []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 64
+  tests_executed:
+    - 'go test ./internal/cli -run TestStatusCmd_'
+    - 'go test ./internal/client'
+    - 'make test'
+    - 'make lint'
+  risks_identified:
+    count: 2
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Status flow remains authenticated through AuthenticatedClient with explicit auth/session handling.'
+  performance:
+    status: PASS
+    notes: 'Command logic performs bounded filtering/sorting over fetched bookings/requests with no expensive operations introduced.'
+  reliability:
+    status: PASS
+    notes: 'Previously missing request/conference/empty-all error-branch regressions are now present and passing.'
+  maintainability:
+    status: PASS
+    notes: 'Error wrapping now preserves root causes in status failure paths, restoring debuggability and standards alignment.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add a focused integration test that validates `unconf status` end-to-end against a running API fixture for conference-scoped and --all variants.'
+      refs:
+        - 'cmd/unconf/main.go'
+        - 'cmd/server/main_integration_test.go'
+      suggested_owner: dev
+    - action: 'Expand fallback-render assertions for unknown/blank projection fields to harden output stability.'
+      refs:
+        - 'internal/cli/status.go'
+        - 'internal/cli/status_test.go'
+      suggested_owner: dev

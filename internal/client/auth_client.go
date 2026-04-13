@@ -128,6 +128,72 @@ func (ac *AuthenticatedClient) CreateBooking(ctx context.Context, input CreateBo
 	return retryBooking, nil
 }
 
+// ListBookings fetches authenticated user bookings, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) ListBookings(ctx context.Context) ([]BookingResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "ListBookings")
+
+	bookings, err := ac.client.ListBookings(ctx, accessToken)
+	if err == nil {
+		return bookings, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "ListBookings")
+
+	retryBookings, retryErr := ac.client.ListBookings(ctx, newAccessToken)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to list bookings after token refresh: %w", retryErr)
+	}
+
+	return retryBookings, nil
+}
+
+// ListRoommateRequests fetches roommate requests, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) ListRoommateRequests(ctx context.Context) ([]RoommateRequestResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "ListRoommateRequests")
+
+	requests, err := ac.client.ListRoommateRequests(ctx, accessToken)
+	if err == nil {
+		return requests, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "ListRoommateRequests")
+
+	retryRequests, retryErr := ac.client.ListRoommateRequests(ctx, newAccessToken)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to list roommate requests after token refresh: %w", retryErr)
+	}
+
+	return retryRequests, nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.
