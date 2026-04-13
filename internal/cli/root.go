@@ -31,6 +31,10 @@ type statusCommandClient struct {
 	apiClient  *client.Client
 }
 
+type attendeesCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
 func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.listClient.ListRooms(ctx, slug)
 }
@@ -61,6 +65,10 @@ func (c *statusCommandClient) GetConference(ctx context.Context, slug string) (*
 
 func (c *statusCommandClient) ListRoommateRequests(ctx context.Context) ([]client.RoommateRequestResponse, error) {
 	return c.authClient.ListRoommateRequests(ctx)
+}
+
+func (c *attendeesCommandClient) ListAttendees(ctx context.Context, slug string) (*client.AttendeeListResponse, error) {
+	return c.authClient.ListAttendees(ctx, slug)
 }
 
 func NewRootCmd() *cobra.Command {
@@ -152,6 +160,9 @@ room browsing, and booking workflows.`,
 		authClient: authClient,
 		apiClient:  apiClient,
 	}
+	attendeesClient := &attendeesCommandClient{
+		authClient: authClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -168,6 +179,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newLoginCmd(apiClient, store))
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 	rootCmd.AddCommand(newStatusCmd(statusClient, ctxManager))
+	rootCmd.AddCommand(newAttendeesCmd(attendeesClient, ctxManager))
 	rootCmd.AddCommand(newListCmd(apiClient))
 	rootCmd.AddCommand(newInfoCmd(apiClient, ctxManager))
 	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))

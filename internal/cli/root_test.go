@@ -77,6 +77,15 @@ func TestRootCmdIncludesRoomsCommand(t *testing.T) {
 	assert.Equal(t, "rooms", roomsCmd.Name())
 }
 
+func TestRootCmdIncludesAttendeesCommand(t *testing.T) {
+	cmd := NewRootCmd()
+
+	attendeesCmd, _, err := cmd.Find([]string{"attendees"})
+	require.NoError(t, err)
+	require.NotNil(t, attendeesCmd)
+	assert.Equal(t, "attendees", attendeesCmd.Name())
+}
+
 func TestDBStatusCommand(t *testing.T) {
 	t.Setenv("UNCONF_API_ENDPOINT", "http://127.0.0.1:8080")
 	t.Setenv("UNCONF_LOG_LEVEL", "debug")

@@ -194,6 +194,39 @@ func (ac *AuthenticatedClient) ListRoommateRequests(ctx context.Context) ([]Room
 	return retryRequests, nil
 }
 
+// ListAttendees fetches conference attendees, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) ListAttendees(ctx context.Context, slug string) (*AttendeeListResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "ListAttendees")
+
+	attendees, err := ac.client.ListAttendees(ctx, accessToken, slug)
+	if err == nil {
+		return attendees, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "ListAttendees")
+
+	retryAttendees, retryErr := ac.client.ListAttendees(ctx, newAccessToken, slug)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to list attendees after token refresh: %w", retryErr)
+	}
+
+	return retryAttendees, nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.

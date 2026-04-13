@@ -60,8 +60,10 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	roomRepo := sqlite.NewRoomRepository(db)
 	roomService := service.NewRoomService(roomRepo, bookingRepo, conferenceRepo, userRepo)
 	roomHandler := handlers.NewRoomHandler(roomService)
+	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepo)
+	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
 
-	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler)
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -763,4 +765,70 @@ func TestGetConferences_ReturnsRealAttendeeCount(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "conference conf-attend not found in response")
+}
+
+func TestGetAttendees_RequiresAuth(t *testing.T) {
+	srv, _, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-attendees-noauth", "Attendees No Auth",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	resp, err := http.Get(srv.URL + "/conferences/conf-attendees-noauth/attendees")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-attendees", "Attendees Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-attendees")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "601", "double", 120.0, 2)
+	publicUser := createTestUserWithName(t, db, "gh-public", "public@test.com", "Public Alice", "public")
+	privateUser := createTestUserWithName(t, db, "gh-private", "private@test.com", "Private Bob", "private")
+	authUser := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
+
+	createTestBooking(t, db, room.ID, publicUser.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	createTestBooking(t, db, room.ID, privateUser.ID, conf.ID, models.BookingStatusConfirmed, "private")
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-attendees/attendees", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, float64(1), body["private_attendees_count"])
+
+	attendees := body["attendees"].([]interface{})
+	require.Len(t, attendees, 1)
+	row := attendees[0].(map[string]interface{})
+	assert.Equal(t, "Public Alice", row["display_name"])
+
+	roomInfo := row["room"].(map[string]interface{})
+	assert.Equal(t, "601", roomInfo["room_number"])
+}
+
+func TestGetAttendees_ConferenceNotFound(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	authUser := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/missing/attendees", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }

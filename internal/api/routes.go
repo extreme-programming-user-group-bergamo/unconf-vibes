@@ -6,7 +6,14 @@ import (
 	"github.com/katurdays/unconf/internal/api/middleware"
 )
 
-func NewRouter(authHandler *handlers.AuthHandler, tokenValidator middleware.TokenValidator, userHandler *handlers.UserHandler, confHandler *handlers.ConferenceHandler, roomHandler *handlers.RoomHandler) *gin.Engine {
+func NewRouter(
+	authHandler *handlers.AuthHandler,
+	tokenValidator middleware.TokenValidator,
+	userHandler *handlers.UserHandler,
+	confHandler *handlers.ConferenceHandler,
+	roomHandler *handlers.RoomHandler,
+	attendeeHandler *handlers.AttendeeHandler,
+) *gin.Engine {
 	router := gin.New()
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.LoggingMiddleware())
@@ -39,6 +46,10 @@ func NewRouter(authHandler *handlers.AuthHandler, tokenValidator middleware.Toke
 		if userHandler != nil {
 			protected.GET("/users/me", userHandler.GetMe)
 			protected.PUT("/users/me", userHandler.UpdateMe)
+		}
+
+		if attendeeHandler != nil {
+			protected.GET("/conferences/:slug/attendees", attendeeHandler.ListByConference)
 		}
 	}
 

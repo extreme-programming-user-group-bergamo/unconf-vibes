@@ -524,3 +524,73 @@ func TestAuthenticatedClient_ListRoommateRequests_AutoRefresh(t *testing.T) {
 	require.Len(t, requests, 1)
 	assert.Equal(t, int32(2), requestCallCount.Load())
 }
+
+func TestAuthenticatedClient_ListAttendees_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/conferences/socrates-26/attendees", r.URL.Path)
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(AttendeeListResponse{
+			Attendees: []AttendeeProjectionResponse{{DisplayName: "Alice", GitHubUsername: "alice"}},
+		})
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	resp, err := ac.ListAttendees(context.Background(), "socrates-26")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Attendees, 1)
+	assert.Equal(t, "Alice", resp.Attendees[0].DisplayName)
+}
+
+func TestAuthenticatedClient_ListAttendees_AutoRefresh(t *testing.T) {
+	var attendeesCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/conferences/socrates-26/attendees":
+			n := attendeesCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "token expired",
+					},
+				})
+				return
+			}
+
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(AttendeeListResponse{
+				Attendees: []AttendeeProjectionResponse{{DisplayName: "Alice"}},
+			})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	resp, err := ac.ListAttendees(context.Background(), "socrates-26")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Attendees, 1)
+	assert.Equal(t, int32(2), attendeesCallCount.Load())
+}
