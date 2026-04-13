@@ -37,6 +37,12 @@ type BookingSelection struct {
 	Room           client.RoomResponse
 }
 
+// InviteSelection is returned to the CLI as the handoff contract for invite flow.
+type InviteSelection struct {
+	ConferenceSlug string
+	Room           client.RoomResponse
+}
+
 // FetchRoomsFunc loads rooms for a conference.
 type FetchRoomsFunc func(ctx context.Context, conferenceSlug string) ([]client.RoomResponse, error)
 
@@ -57,10 +63,13 @@ type Model struct {
 	sortMode           SortMode
 	bookingInitiated   bool
 	selectedForBooking client.RoomResponse
+	inviteInitiated    bool
+	selectedForInvite  client.RoomResponse
+	ownRoomID          int64
 }
 
 // NewModel creates a room explorer model with loading state enabled.
-func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsFunc, styles common.Styles) *Model {
+func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsFunc, ownRoomID int64, styles common.Styles) *Model {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -75,6 +84,7 @@ func NewModel(ctx context.Context, conferenceSlug string, fetchRooms FetchRoomsF
 		visible:        []client.RoomResponse{},
 		filter:         RoomTypeFilterAll,
 		sortMode:       SortModeAvailability,
+		ownRoomID:      ownRoomID,
 	}
 }
 
@@ -147,6 +157,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedForBooking = m.visible[m.selected]
 				return m, tea.Quit
 			}
+		case "i":
+			if len(m.visible) > 0 {
+				selected := m.visible[m.selected]
+				if m.ownRoomID > 0 && selected.ID == m.ownRoomID && selected.SpotsAvailable > 0 {
+					m.inviteInitiated = true
+					m.selectedForInvite = selected
+					return m, tea.Quit
+				}
+			}
 		}
 	}
 
@@ -186,11 +205,24 @@ func (m *Model) View() string {
 				b.WriteString(m.styles.Subtle.Render(occupantsLine))
 			}
 			b.WriteString("\n")
+
+			if room.ID == m.ownRoomID {
+				ownRoomLine := "  Your room"
+				if room.SpotsAvailable > 0 {
+					ownRoomLine += " (press i to invite roommate)"
+				}
+				if i == m.selected {
+					b.WriteString(m.styles.Selected.Render(ownRoomLine))
+				} else {
+					b.WriteString(m.styles.Subtle.Render(ownRoomLine))
+				}
+				b.WriteString("\n")
+			}
 		}
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(common.RenderFooter(m.styles, []string{"up/down: navigate", "s/d/t/f: filter", "p/v: sort", "enter: select", "q: quit"}))
+	b.WriteString(common.RenderFooter(m.styles, []string{"up/down: navigate", "s/d/t/f: filter", "p/v: sort", "enter: select", "i: invite from own room", "q: quit"}))
 	b.WriteString("\n")
 
 	return b.String()
@@ -205,6 +237,18 @@ func (m *Model) BookingSelection() (BookingSelection, bool) {
 	return BookingSelection{
 		ConferenceSlug: m.conferenceSlug,
 		Room:           m.selectedForBooking,
+	}, true
+}
+
+// InviteSelection returns the selected room when i was used to initiate roommate invite.
+func (m *Model) InviteSelection() (InviteSelection, bool) {
+	if !m.inviteInitiated {
+		return InviteSelection{}, false
+	}
+
+	return InviteSelection{
+		ConferenceSlug: m.conferenceSlug,
+		Room:           m.selectedForInvite,
 	}, true
 }
 

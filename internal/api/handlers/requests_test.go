@@ -92,6 +92,53 @@ func TestRequestHandler_Create_CannotRequestSelf(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "cannot_request_self")
 }
 
+func TestRequestHandler_Create_TargetNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewRequestHandler(&mockRequestService{
+		createFn: func(_ context.Context, _ int64, input service.CreateRoommateRequestInput) (*models.RoommateRequest, error) {
+			assert.Equal(t, "missing", input.TargetUsername)
+			return nil, service.ErrTargetNotFound
+		},
+	})
+
+	router := gin.New()
+	router.POST("/requests", func(c *gin.Context) {
+		c.Set("user_id", int64(9))
+		handler.Create(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/requests", bytes.NewBufferString(`{"target_username":"missing","room_id":3}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "target_not_found")
+}
+
+func TestRequestHandler_Create_TargetHasBooking(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewRequestHandler(&mockRequestService{
+		createFn: func(_ context.Context, _ int64, _ service.CreateRoommateRequestInput) (*models.RoommateRequest, error) {
+			return nil, service.ErrTargetAlreadyBooked
+		},
+	})
+
+	router := gin.New()
+	router.POST("/requests", func(c *gin.Context) {
+		c.Set("user_id", int64(9))
+		handler.Create(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/requests", bytes.NewBufferString(`{"target_username":"booked","room_id":3}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "target_has_booking")
+}
+
 func TestRequestHandler_List_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := NewRequestHandler(&mockRequestService{

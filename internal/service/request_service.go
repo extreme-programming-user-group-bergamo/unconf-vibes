@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/katurdays/unconf/internal/models"
 	"github.com/katurdays/unconf/internal/repository"
@@ -27,15 +28,22 @@ type requestRoomRepository interface {
 	GetByID(ctx context.Context, id int64) (*models.Room, error)
 }
 
+type requestUserRepository interface {
+	GetByID(ctx context.Context, id int64) (*models.User, error)
+	GetByGitHubID(ctx context.Context, githubID string) (*models.User, error)
+}
+
 type RequestService struct {
 	requestRepo requestRepository
 	bookingRepo requestBookingRepository
 	roomRepo    requestRoomRepository
+	userRepo    requestUserRepository
 }
 
 type CreateRoommateRequestInput struct {
-	TargetID int64 `json:"target_id"`
-	RoomID   int64 `json:"room_id"`
+	TargetID       int64  `json:"target_id,omitempty"`
+	TargetUsername string `json:"target_username,omitempty"`
+	RoomID         int64  `json:"room_id"`
 }
 
 type RoommateRequestView struct {
@@ -52,16 +60,18 @@ func NewRequestService(
 	requestRepo requestRepository,
 	bookingRepo requestBookingRepository,
 	roomRepo requestRoomRepository,
+	userRepo requestUserRepository,
 ) *RequestService {
 	return &RequestService{
 		requestRepo: requestRepo,
 		bookingRepo: bookingRepo,
 		roomRepo:    roomRepo,
+		userRepo:    userRepo,
 	}
 }
 
 func (s *RequestService) CreateRequest(ctx context.Context, requesterID int64, input CreateRoommateRequestInput) (*models.RoommateRequest, error) {
-	if requesterID == input.TargetID {
+	if input.TargetID > 0 && requesterID == input.TargetID {
 		return nil, fmt.Errorf("failed to create roommate request: %w", ErrCannotRequestSelf)
 	}
 
@@ -78,14 +88,14 @@ func (s *RequestService) CreateRequest(ctx context.Context, requesterID int64, i
 		return nil, fmt.Errorf("failed to create roommate request: %w", err)
 	}
 
-	requesterInRoom := false
+	var requesterBooking *models.Booking
 	for _, booking := range bookings {
 		if booking.UserID == requesterID {
-			requesterInRoom = true
+			requesterBooking = booking
 			break
 		}
 	}
-	if !requesterInRoom {
+	if requesterBooking == nil {
 		return nil, fmt.Errorf("failed to create roommate request: %w", ErrRequesterNotInRoom)
 	}
 
@@ -93,9 +103,26 @@ func (s *RequestService) CreateRequest(ctx context.Context, requesterID int64, i
 		return nil, fmt.Errorf("failed to create roommate request: %w", ErrRoomFull)
 	}
 
+	target, err := s.resolveTargetUser(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create roommate request: %w", err)
+	}
+
+	if target.ID == requesterID {
+		return nil, fmt.Errorf("failed to create roommate request: %w", ErrCannotRequestSelf)
+	}
+
+	targetBooking, err := s.bookingRepo.GetActiveByUserAndConference(ctx, target.ID, requesterBooking.ConferenceID)
+	if err != nil && !errors.Is(err, repository.ErrBookingNotFound) {
+		return nil, fmt.Errorf("failed to create roommate request: %w", err)
+	}
+	if targetBooking != nil {
+		return nil, fmt.Errorf("failed to create roommate request: %w", ErrTargetAlreadyBooked)
+	}
+
 	created, err := s.requestRepo.Create(ctx, &models.RoommateRequest{
 		RequesterID: requesterID,
-		TargetID:    input.TargetID,
+		TargetID:    target.ID,
 		RoomID:      input.RoomID,
 		Status:      models.RoommateRequestStatusPending,
 	})
@@ -107,6 +134,34 @@ func (s *RequestService) CreateRequest(ctx context.Context, requesterID int64, i
 	}
 
 	return created, nil
+}
+
+func (s *RequestService) resolveTargetUser(ctx context.Context, input CreateRoommateRequestInput) (*models.User, error) {
+	if input.TargetID > 0 {
+		target, err := s.userRepo.GetByID(ctx, input.TargetID)
+		if err != nil {
+			if errors.Is(err, repository.ErrUserNotFound) {
+				return nil, ErrTargetNotFound
+			}
+			return nil, err
+		}
+		return target, nil
+	}
+
+	username := strings.TrimSpace(strings.TrimPrefix(input.TargetUsername, "@"))
+	if username == "" {
+		return nil, ErrTargetNotFound
+	}
+
+	target, err := s.userRepo.GetByGitHubID(ctx, username)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, ErrTargetNotFound
+		}
+		return nil, err
+	}
+
+	return target, nil
 }
 
 func (s *RequestService) ListRequests(ctx context.Context, userID int64) ([]RoommateRequestView, error) {

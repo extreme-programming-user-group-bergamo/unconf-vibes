@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -21,6 +23,8 @@ import (
 type RoomsClient interface {
 	ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error)
 	CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
+	ListBookings(ctx context.Context) ([]client.BookingResponse, error)
+	CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error)
 }
 
 // RoomsContextStore defines the interface for reading active conference context.
@@ -135,10 +139,19 @@ func runRooms(cmd *cobra.Command, roomsClient RoomsClient, checker terminalCapab
 
 	slog.Info("rooms: starting interactive explorer", "slug", slug)
 
-	model := tuirooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, common.NewStyles())
+	ownRoomID, _ := resolveOwnRoomID(cmd.Context(), roomsClient, slug)
+	model := tuirooms.NewModel(cmd.Context(), slug, roomsClient.ListRooms, ownRoomID, common.NewStyles())
 	runModel, err := launchRoomsExplorer(model)
 	if err != nil {
 		return fmt.Errorf("failed to launch rooms explorer: %w", err)
+	}
+
+	inviteSelection, inviteSelected := extractInviteSelection(runModel)
+	if inviteSelected {
+		if err := runRoomsInviteFlow(cmd, roomsClient, slug, inviteSelection); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	selection, selected := extractBookingSelection(runModel)
@@ -164,6 +177,17 @@ func extractBookingSelection(runModel tea.Model) (tuirooms.BookingSelection, boo
 	return selectionProvider.BookingSelection()
 }
 
+func extractInviteSelection(runModel tea.Model) (tuirooms.InviteSelection, bool) {
+	inviteProvider, ok := runModel.(interface {
+		InviteSelection() (tuirooms.InviteSelection, bool)
+	})
+	if !ok {
+		return tuirooms.InviteSelection{}, false
+	}
+
+	return inviteProvider.InviteSelection()
+}
+
 func runBookingWizardFlow(cmd *cobra.Command, roomsClient RoomsClient, selection tuirooms.BookingSelection) error {
 	wizardModel := tuiwizard.NewModel(
 		cmd.Context(),
@@ -180,6 +204,49 @@ func runBookingWizardFlow(cmd *cobra.Command, roomsClient RoomsClient, selection
 	}
 
 	return nil
+}
+
+func runRoomsInviteFlow(cmd *cobra.Command, roomsClient RoomsClient, conferenceSlug string, selection tuirooms.InviteSelection) error {
+	if selection.Room.SpotsAvailable < 1 {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "You can only invite when your room has available spots.")
+		return nil
+	}
+
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), "Invite GitHub username: ")
+	usernameInput, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil {
+		if !errors.Is(err, io.EOF) || strings.TrimSpace(usernameInput) == "" {
+			return fmt.Errorf("failed to read invite username: %w", err)
+		}
+	}
+
+	username := normalizeInviteUsername(usernameInput)
+	if username == "" {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Invite canceled.")
+		return nil
+	}
+
+	if _, err := createInviteForRoom(cmd.Context(), roomsClient, selection.Room.ID, username); err != nil {
+		handleInviteError(cmd, conferenceSlug, username, err)
+		return fmt.Errorf("failed to send invite to @%s from room view: %w", username, err)
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Request sent to @%s\n", username)
+	return nil
+}
+
+func resolveOwnRoomID(ctx context.Context, roomsClient RoomsClient, conferenceSlug string) (int64, error) {
+	bookings, err := roomsClient.ListBookings(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	filtered := filterBookingsByConference(bookings, 0, conferenceSlug)
+	if len(filtered) == 0 {
+		return 0, nil
+	}
+
+	return filtered[0].RoomID, nil
 }
 
 func runRoomsFallback(cmd *cobra.Command, roomsClient RoomsClient, slug string) error {

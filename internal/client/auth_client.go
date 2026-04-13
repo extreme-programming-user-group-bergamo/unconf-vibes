@@ -128,6 +128,39 @@ func (ac *AuthenticatedClient) CreateBooking(ctx context.Context, input CreateBo
 	return retryBooking, nil
 }
 
+// CreateRoommateRequest creates a roommate request, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) CreateRoommateRequest(ctx context.Context, input CreateRoommateRequestRequest) (*RoommateRequestResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "CreateRoommateRequest")
+
+	request, err := ac.client.CreateRoommateRequest(ctx, accessToken, input)
+	if err == nil {
+		return request, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "CreateRoommateRequest")
+
+	retryRequest, retryErr := ac.client.CreateRoommateRequest(ctx, newAccessToken, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to create roommate request after token refresh: %w", retryErr)
+	}
+
+	return retryRequest, nil
+}
+
 // ListBookings fetches authenticated user bookings, automatically refreshing the access token on 401.
 func (ac *AuthenticatedClient) ListBookings(ctx context.Context) ([]BookingResponse, error) {
 	accessToken, err := ac.store.GetAccessToken()

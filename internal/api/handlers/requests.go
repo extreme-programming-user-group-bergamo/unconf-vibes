@@ -22,8 +22,9 @@ type serviceRequestService interface {
 }
 
 type CreateRoommateRequestRequest struct {
-	TargetID int64 `json:"target_id"`
-	RoomID   int64 `json:"room_id"`
+	TargetID       int64  `json:"target_id,omitempty"`
+	TargetUsername string `json:"target_username,omitempty"`
+	RoomID         int64  `json:"room_id"`
 }
 
 type RequestHandler struct {
@@ -48,8 +49,9 @@ func (h *RequestHandler) Create(c *gin.Context) {
 	}
 
 	created, err := h.requestService.CreateRequest(c.Request.Context(), userID, service.CreateRoommateRequestInput{
-		TargetID: req.TargetID,
-		RoomID:   req.RoomID,
+		TargetID:       req.TargetID,
+		TargetUsername: req.TargetUsername,
+		RoomID:         req.RoomID,
 	})
 	if err != nil {
 		h.writeServiceError(c, err, "failed to create roommate request")
@@ -123,6 +125,10 @@ func (h *RequestHandler) writeServiceError(c *gin.Context, err error, logMessage
 		responses.WriteError(c, "invalid_request", "Requester is not in this room", http.StatusBadRequest)
 	case errors.Is(err, service.ErrDuplicateRequest):
 		responses.WriteError(c, "duplicate_request", "Duplicate roommate request", http.StatusConflict)
+	case errors.Is(err, service.ErrTargetNotFound):
+		responses.WriteError(c, "target_not_found", "Target user not found", http.StatusNotFound)
+	case errors.Is(err, service.ErrTargetAlreadyBooked):
+		responses.WriteError(c, "target_has_booking", "Target user already has a booking for this conference", http.StatusConflict)
 	case errors.Is(err, service.ErrRequestNotFound):
 		responses.WriteError(c, "not_found", "Roommate request not found", http.StatusNotFound)
 	case errors.Is(err, service.ErrRequestForbidden):

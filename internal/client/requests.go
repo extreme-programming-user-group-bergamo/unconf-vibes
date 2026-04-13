@@ -6,6 +6,13 @@ import (
 	"net/http"
 )
 
+// CreateRoommateRequestRequest represents the payload for POST /requests.
+type CreateRoommateRequestRequest struct {
+	TargetUsername string `json:"target_username,omitempty"`
+	TargetID       int64  `json:"target_id,omitempty"`
+	RoomID         int64  `json:"room_id"`
+}
+
 // RoommateRequestResponse represents a roommate request returned by GET /requests.
 type RoommateRequestResponse struct {
 	ID             int64  `json:"id"`
@@ -20,6 +27,50 @@ type RoommateRequestResponse struct {
 	TargetName     string `json:"target_name,omitempty"`
 	CreatedAt      string `json:"created_at"`
 	RespondedAt    string `json:"responded_at,omitempty"`
+}
+
+// CreateRoommateRequest creates a roommate request via POST /requests.
+func (c *Client) CreateRoommateRequest(ctx context.Context, accessToken string, input CreateRoommateRequestRequest) (*RoommateRequestResponse, error) {
+	var result RoommateRequestResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetBody(input).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Post("/requests")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create roommate request: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to create roommate request: %w", ErrUnauthorized)
+	}
+
+	if resp.StatusCode() == http.StatusNotFound {
+		if errEnvelope.Error.Code == "target_not_found" {
+			return nil, fmt.Errorf("failed to create roommate request: %w", ErrTargetUserNotFound)
+		}
+	}
+
+	if resp.StatusCode() == http.StatusConflict {
+		switch errEnvelope.Error.Code {
+		case "target_has_booking":
+			return nil, fmt.Errorf("failed to create roommate request: %w", ErrTargetAlreadyBooked)
+		case "duplicate_request":
+			return nil, fmt.Errorf("failed to create roommate request: %w", ErrRequestPending)
+		case "room_full":
+			return nil, fmt.Errorf("failed to create roommate request: %w", ErrRoomFull)
+		}
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to create roommate request: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
 }
 
 // ListRoommateRequests fetches roommate requests via GET /requests.

@@ -35,12 +35,24 @@ type attendeesCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
 
+type inviteCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
 func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.listClient.ListRooms(ctx, slug)
 }
 
 func (c *roomsCommandClient) CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error) {
 	return c.bookingClient.CreateBooking(ctx, input)
+}
+
+func (c *roomsCommandClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
+	return c.bookingClient.ListBookings(ctx)
+}
+
+func (c *roomsCommandClient) CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error) {
+	return c.bookingClient.CreateRoommateRequest(ctx, input)
 }
 
 func (c *bookCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
@@ -69,6 +81,14 @@ func (c *statusCommandClient) ListRoommateRequests(ctx context.Context) ([]clien
 
 func (c *attendeesCommandClient) ListAttendees(ctx context.Context, slug string) (*client.AttendeeListResponse, error) {
 	return c.authClient.ListAttendees(ctx, slug)
+}
+
+func (c *inviteCommandClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
+	return c.authClient.ListBookings(ctx)
+}
+
+func (c *inviteCommandClient) CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error) {
+	return c.authClient.CreateRoommateRequest(ctx, input)
 }
 
 func NewRootCmd() *cobra.Command {
@@ -163,6 +183,9 @@ room browsing, and booking workflows.`,
 	attendeesClient := &attendeesCommandClient{
 		authClient: authClient,
 	}
+	inviteClient := &inviteCommandClient{
+		authClient: authClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -180,6 +203,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 	rootCmd.AddCommand(newStatusCmd(statusClient, ctxManager))
 	rootCmd.AddCommand(newAttendeesCmd(attendeesClient, ctxManager))
+	rootCmd.AddCommand(newInviteCmd(inviteClient, ctxManager))
 	rootCmd.AddCommand(newListCmd(apiClient))
 	rootCmd.AddCommand(newInfoCmd(apiClient, ctxManager))
 	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))

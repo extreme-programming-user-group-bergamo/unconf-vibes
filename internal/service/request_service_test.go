@@ -60,11 +60,35 @@ func (m *mockRequestRoomRepository) GetByID(ctx context.Context, id int64) (*mod
 	return m.getByIDFn(ctx, id)
 }
 
+type mockRequestUserRepository struct {
+	getByIDFn       func(ctx context.Context, id int64) (*models.User, error)
+	getByGitHubIDFn func(ctx context.Context, githubID string) (*models.User, error)
+}
+
+func (m *mockRequestUserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
+	if m.getByIDFn != nil {
+		return m.getByIDFn(ctx, id)
+	}
+	return nil, repository.ErrUserNotFound
+}
+
+func (m *mockRequestUserRepository) GetByGitHubID(ctx context.Context, githubID string) (*models.User, error) {
+	if m.getByGitHubIDFn != nil {
+		return m.getByGitHubIDFn(ctx, githubID)
+	}
+	return nil, repository.ErrUserNotFound
+}
+
 func TestRequestService_CreateRequest_SelfRejected(t *testing.T) {
 	svc := NewRequestService(
 		&mockRequestRepository{},
 		&mockRequestBookingRepository{},
 		&mockRequestRoomRepository{},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id}, nil
+			},
+		},
 	)
 
 	_, err := svc.CreateRequest(context.Background(), 10, CreateRoommateRequestInput{
@@ -86,6 +110,11 @@ func TestRequestService_CreateRequest_RoomFullRejected(t *testing.T) {
 		&mockRequestRoomRepository{
 			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
 				return &models.Room{ID: 7, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id}, nil
 			},
 		},
 	)
@@ -143,6 +172,7 @@ func TestRequestService_AcceptRequest_CreatesTargetBookingWhenMissing(t *testing
 				return &models.Room{ID: 33, Capacity: 2}, nil
 			},
 		},
+		&mockRequestUserRepository{},
 	)
 
 	updated, err := svc.AcceptRequest(context.Background(), 55, 22)
@@ -173,6 +203,7 @@ func TestRequestService_DeclineRequest_UpdatesStatus(t *testing.T) {
 		},
 		&mockRequestBookingRepository{},
 		&mockRequestRoomRepository{},
+		&mockRequestUserRepository{},
 	)
 
 	result, err := svc.DeclineRequest(context.Background(), 7, 11)
@@ -194,6 +225,11 @@ func TestRequestService_CreateRequest_RequesterNotInRoomRejected(t *testing.T) {
 				return &models.Room{ID: 7, Capacity: 2}, nil
 			},
 		},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id}, nil
+			},
+		},
 	)
 
 	_, err := svc.CreateRequest(context.Background(), 1, CreateRoommateRequestInput{
@@ -202,4 +238,63 @@ func TestRequestService_CreateRequest_RequesterNotInRoomRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrRequesterNotInRoom)
+}
+
+func TestRequestService_CreateRequest_TargetUsernameNotFoundRejected(t *testing.T) {
+	svc := NewRequestService(
+		&mockRequestRepository{},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{UserID: 1, ConferenceID: 99}}, nil
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 7, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{
+			getByGitHubIDFn: func(_ context.Context, _ string) (*models.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
+		},
+	)
+
+	_, err := svc.CreateRequest(context.Background(), 1, CreateRoommateRequestInput{
+		TargetUsername: "@missing",
+		RoomID:         7,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTargetNotFound)
+}
+
+func TestRequestService_CreateRequest_TargetAlreadyBookedRejected(t *testing.T) {
+	svc := NewRequestService(
+		&mockRequestRepository{},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{UserID: 1, ConferenceID: 77}}, nil
+			},
+			getActiveByUserAndConferenceFn: func(_ context.Context, userID, conferenceID int64) (*models.Booking, error) {
+				return &models.Booking{UserID: userID, ConferenceID: conferenceID, RoomID: 999}, nil
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 7, Capacity: 3}, nil
+			},
+		},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id}, nil
+			},
+		},
+	)
+
+	_, err := svc.CreateRequest(context.Background(), 1, CreateRoommateRequestInput{
+		TargetID: 2,
+		RoomID:   7,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTargetAlreadyBooked)
 }

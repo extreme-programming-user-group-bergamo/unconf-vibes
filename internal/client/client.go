@@ -21,6 +21,9 @@ var (
 	ErrRoomFull             = errors.New("room is at capacity")
 	ErrAlreadyBooked        = errors.New("user already has a booking for this conference")
 	ErrRoomNotFound         = errors.New("room not found")
+	ErrTargetUserNotFound   = errors.New("target user not found")
+	ErrTargetAlreadyBooked  = errors.New("target user already has a booking for this conference")
+	ErrRequestPending       = errors.New("roommate request is already pending")
 )
 
 // DeviceFlowResponse represents the response from POST /auth/device.

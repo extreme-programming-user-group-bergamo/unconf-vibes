@@ -874,3 +874,61 @@ func TestListRoommateRequests_Unauthorized(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrUnauthorized)
 }
+
+func TestCreateRoommateRequest_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/requests", r.URL.Path)
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(RoommateRequestResponse{ID: 5, Status: "pending", TargetID: 22, RoomID: 7})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	request, err := c.CreateRoommateRequest(context.Background(), "access-token", CreateRoommateRequestRequest{
+		TargetUsername: "alice",
+		RoomID:         7,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, request)
+	assert.Equal(t, int64(5), request.ID)
+	assert.Equal(t, "pending", request.Status)
+}
+
+func TestCreateRoommateRequest_ConflictMappings(t *testing.T) {
+	tests := []struct {
+		name   string
+		code   string
+		errIs  error
+		status int
+	}{
+		{name: "target has booking", code: "target_has_booking", errIs: ErrTargetAlreadyBooked, status: http.StatusConflict},
+		{name: "duplicate request", code: "duplicate_request", errIs: ErrRequestPending, status: http.StatusConflict},
+		{name: "room full", code: "room_full", errIs: ErrRoomFull, status: http.StatusConflict},
+		{name: "target not found", code: "target_not_found", errIs: ErrTargetUserNotFound, status: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    tt.code,
+						"message": "boom",
+					},
+				})
+			}))
+			defer srv.Close()
+
+			c := NewClient(srv.URL)
+			request, err := c.CreateRoommateRequest(context.Background(), "access-token", CreateRoommateRequestRequest{TargetUsername: "alice", RoomID: 7})
+			assert.Nil(t, request)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, tt.errIs)
+		})
+	}
+}

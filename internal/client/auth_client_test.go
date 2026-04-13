@@ -594,3 +594,51 @@ func TestAuthenticatedClient_ListAttendees_AutoRefresh(t *testing.T) {
 	require.Len(t, resp.Attendees, 1)
 	assert.Equal(t, int32(2), attendeesCallCount.Load())
 }
+
+func TestAuthenticatedClient_CreateRoommateRequest_AutoRefresh(t *testing.T) {
+	var requestCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/requests":
+			n := requestCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "token expired",
+					},
+				})
+				return
+			}
+
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(RoommateRequestResponse{ID: 3, Status: "pending"})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	request, err := ac.CreateRoommateRequest(context.Background(), CreateRoommateRequestRequest{
+		TargetUsername: "bob",
+		RoomID:         7,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, request)
+	assert.Equal(t, int64(3), request.ID)
+	assert.Equal(t, int32(2), requestCallCount.Load())
+}

@@ -30,7 +30,7 @@ func TestModel_InitStartsLoadingAndTransitionsToLoaded(t *testing.T) {
 			Capacity:       2,
 			PricePerNight:  120,
 		}}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	assert.True(t, model.loading)
 
@@ -56,7 +56,7 @@ func TestModel_UpdateTransitionsToErrorState(t *testing.T) {
 	expectedErr := errors.New("boom")
 	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return nil, expectedErr
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	msg := model.Init()()
 	updated, followUp := model.Update(msg)
@@ -75,7 +75,7 @@ func TestModel_UpdateNavigation(t *testing.T) {
 			{ID: 1, RoomNumber: "101", RoomType: "double", SpotsAvailable: 1, Capacity: 2, PricePerNight: 120},
 			{ID: 2, RoomNumber: "102", RoomType: "single", SpotsAvailable: 0, Capacity: 1, PricePerNight: 90},
 		}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	state := loaded.(*Model)
@@ -94,7 +94,7 @@ func TestModel_UpdateFilteringByRoomType(t *testing.T) {
 			{ID: 2, RoomNumber: "201", RoomType: "double", SpotsAvailable: 2, Capacity: 2, PricePerNight: 130},
 			{ID: 3, RoomNumber: "301", RoomType: "triple", SpotsAvailable: 3, Capacity: 3, PricePerNight: 160},
 		}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	state := loaded.(*Model)
@@ -121,7 +121,7 @@ func TestModel_UpdateFilteringClampsSelectedIndexWhenVisibleShrinks(t *testing.T
 			{ID: 2, RoomNumber: "201", RoomType: "double", SpotsAvailable: 2, Capacity: 2, PricePerNight: 130},
 			{ID: 3, RoomNumber: "301", RoomType: "triple", SpotsAvailable: 3, Capacity: 3, PricePerNight: 160},
 		}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	state := loaded.(*Model)
@@ -143,7 +143,7 @@ func TestModel_UpdateSorting(t *testing.T) {
 			{ID: 1, RoomNumber: "101", RoomType: "single", SpotsAvailable: 0, Capacity: 1, PricePerNight: 100},
 			{ID: 3, RoomNumber: "303", RoomType: "triple", SpotsAvailable: 2, Capacity: 3, PricePerNight: 200},
 		}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	state := loaded.(*Model)
@@ -173,7 +173,7 @@ func TestModel_ViewRendersOccupantsAndPrivacyMasking(t *testing.T) {
 				{},
 			},
 		}}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	out := stripANSI(loaded.(*Model).View())
@@ -186,7 +186,7 @@ func TestModel_ViewRendersOccupantsAndPrivacyMasking(t *testing.T) {
 func TestModel_ViewUsesReadableFilterAndSortLabels(t *testing.T) {
 	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return []client.RoomResponse{{ID: 1, RoomNumber: "101", RoomType: "single", SpotsAvailable: 1, Capacity: 1, PricePerNight: 99}}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	state := loaded.(*Model)
@@ -200,7 +200,7 @@ func TestModel_ViewUsesReadableFilterAndSortLabels(t *testing.T) {
 func TestModel_EnterInitiatesBookingSelection(t *testing.T) {
 	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return []client.RoomResponse{{ID: 7, RoomNumber: "205", RoomType: "double", SpotsAvailable: 1, Capacity: 2, PricePerNight: 140}}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	next, cmd := loaded.(*Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -215,7 +215,7 @@ func TestModel_EnterInitiatesBookingSelection(t *testing.T) {
 func TestModel_ViewShowsExtendedFooterHelp(t *testing.T) {
 	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
 		return []client.RoomResponse{{ID: 1, RoomNumber: "101", RoomType: "single", SpotsAvailable: 1, Capacity: 1, PricePerNight: 99}}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	loaded, _ := model.Update(model.Init()())
 	out := loaded.(*Model).View()
@@ -227,7 +227,7 @@ func TestModel_ViewShowsExtendedFooterHelp(t *testing.T) {
 }
 
 func TestModel_UpdateQuitKeys(t *testing.T) {
-	model := NewModel(context.Background(), "socrates-26", nil, common.NewStyles())
+	model := NewModel(context.Background(), "socrates-26", nil, 0, common.NewStyles())
 
 	_, quitCmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	require.NotNil(t, quitCmd)
@@ -244,7 +244,42 @@ func TestModel_InitPropagatesProvidedContext(t *testing.T) {
 	model := NewModel(ctx, "socrates-26", func(fetchCtx context.Context, _ string) ([]client.RoomResponse, error) {
 		assert.Equal(t, "req-123", fetchCtx.Value(requestIDKey))
 		return []client.RoomResponse{}, nil
-	}, common.NewStyles())
+	}, 0, common.NewStyles())
 
 	_ = model.Init()()
+}
+
+func TestModel_InviteSelectionOnlyForOwnRoomWithAvailability(t *testing.T) {
+	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
+		return []client.RoomResponse{
+			{ID: 1, RoomNumber: "101", RoomType: "double", SpotsAvailable: 1, Capacity: 2, PricePerNight: 100},
+			{ID: 2, RoomNumber: "102", RoomType: "double", SpotsAvailable: 1, Capacity: 2, PricePerNight: 110},
+		}, nil
+	}, 2, common.NewStyles())
+
+	loaded, _ := model.Update(model.Init()())
+	state := loaded.(*Model)
+	next, _ := state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	_, ok := next.(*Model).InviteSelection()
+	assert.False(t, ok)
+
+	navigated, _ := next.(*Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	inviteState, inviteCmd := navigated.(*Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	require.NotNil(t, inviteCmd)
+	selection, ok := inviteState.(*Model).InviteSelection()
+	require.True(t, ok)
+	assert.Equal(t, int64(2), selection.Room.ID)
+}
+
+func TestModel_InviteSelectionBlockedWhenOwnRoomIsFull(t *testing.T) {
+	model := NewModel(context.Background(), "socrates-26", func(_ context.Context, _ string) ([]client.RoomResponse, error) {
+		return []client.RoomResponse{
+			{ID: 2, RoomNumber: "102", RoomType: "double", SpotsAvailable: 0, Capacity: 2, PricePerNight: 110},
+		}, nil
+	}, 2, common.NewStyles())
+
+	loaded, _ := model.Update(model.Init()())
+	next, _ := loaded.(*Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	_, ok := next.(*Model).InviteSelection()
+	assert.False(t, ok)
 }

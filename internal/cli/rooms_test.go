@@ -19,6 +19,8 @@ import (
 type mockRoomsClient struct {
 	listRoomsFn     func(ctx context.Context, slug string) ([]client.RoomResponse, error)
 	createBookingFn func(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
+	listBookingsFn  func(ctx context.Context) ([]client.BookingResponse, error)
+	createInviteFn  func(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error)
 }
 
 func (m *mockRoomsClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
@@ -34,6 +36,22 @@ func (m *mockRoomsClient) CreateBooking(ctx context.Context, input client.Create
 	}
 
 	return &client.BookingResponse{}, nil
+}
+
+func (m *mockRoomsClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
+	if m.listBookingsFn != nil {
+		return m.listBookingsFn(ctx)
+	}
+
+	return []client.BookingResponse{}, nil
+}
+
+func (m *mockRoomsClient) CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error) {
+	if m.createInviteFn != nil {
+		return m.createInviteFn(ctx, input)
+	}
+
+	return &client.RoommateRequestResponse{}, nil
 }
 
 type mockRoomsContextStore struct {
@@ -68,6 +86,16 @@ type fakeSelectionModel struct {
 }
 
 func (m fakeSelectionModel) BookingSelection() (tuirooms.BookingSelection, bool) {
+	return m.selection, m.ok
+}
+
+type fakeInviteSelectionModel struct {
+	fakeTeaModel
+	selection tuirooms.InviteSelection
+	ok        bool
+}
+
+func (m fakeInviteSelectionModel) InviteSelection() (tuirooms.InviteSelection, bool) {
 	return m.selection, m.ok
 }
 
@@ -306,6 +334,21 @@ func TestExtractBookingSelection_NoSelection(t *testing.T) {
 	selection, ok := extractBookingSelection(runModel)
 	require.False(t, ok)
 	assert.Equal(t, tuirooms.BookingSelection{}, selection)
+}
+
+func TestExtractInviteSelection_ReturnsSelectionWhenAvailable(t *testing.T) {
+	runModel := fakeInviteSelectionModel{
+		selection: tuirooms.InviteSelection{
+			ConferenceSlug: "socrates-26",
+			Room:           client.RoomResponse{ID: 2, RoomNumber: "204"},
+		},
+		ok: true,
+	}
+
+	selection, ok := extractInviteSelection(runModel)
+	require.True(t, ok)
+	assert.Equal(t, "socrates-26", selection.ConferenceSlug)
+	assert.Equal(t, "204", selection.Room.RoomNumber)
 }
 
 func TestRunBookingWizardFlow_LaunchFailureIncludesContext(t *testing.T) {

@@ -26,6 +26,8 @@ var (
 	ErrInvalidRequestState   = errors.New("roommate request is not pending")
 	ErrRequesterNotInRoom    = errors.New("requester does not occupy room")
 	ErrDuplicateRequest      = errors.New("duplicate roommate request")
+	ErrTargetNotFound        = errors.New("target user not found")
+	ErrTargetAlreadyBooked   = errors.New("target user already has booking")
 )
 
 type PendingAuthError struct {

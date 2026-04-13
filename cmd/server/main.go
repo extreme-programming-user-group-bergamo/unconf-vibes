@@ -94,7 +94,7 @@ func main() {
 	roomHandler := handlers.NewRoomHandler(roomService)
 	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepository)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
-	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo)
+	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepository)
 	requestHandler := handlers.NewRequestHandler(requestService)
 
 	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, requestHandler)
