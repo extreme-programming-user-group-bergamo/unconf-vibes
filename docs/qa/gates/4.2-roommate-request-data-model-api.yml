@@ -1,0 +1,49 @@
+schema: 1
+story: '4.2'
+story_title: 'Story 4.2: Roommate Request Data Model & API'
+gate: PASS
+status_reason: 'Implementation satisfies AC1-AC7 with passing unit/integration coverage and clean quality gates.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-13T23:20:29Z'
+quality_score: 95
+expires: '2026-04-27T23:20:29Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 22
+  tests_executed:
+    - 'make test'
+    - 'make lint'
+  risks_identified:
+    count: 1
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'All request endpoints are behind auth middleware and ownership checks gate accept/decline transitions.'
+  performance:
+    status: PASS
+    notes: 'Request operations are bounded by simple indexed lookups/updates; no heavy loops introduced.'
+  reliability:
+    status: PASS
+    notes: 'State-transition guards and repository error mapping are implemented; full test and lint suites pass.'
+  maintainability:
+    status: PASS
+    notes: 'Handler→service→repository boundaries are preserved with wrapped errors and focused responsibilities.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add explicit integration tests for duplicate pending requests and non-pending accept/decline conflict mapping.'
+      refs:
+        - 'internal/api/routes_test.go'
+        - 'internal/service/request_service_test.go'
+      suggested_owner: dev

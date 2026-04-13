@@ -107,6 +107,46 @@ func (r *BookingRepository) CountByConference(ctx context.Context, conferenceID 
 	return count, nil
 }
 
+func (r *BookingRepository) GetActiveByUserAndConference(ctx context.Context, userID, conferenceID int64) (*models.Booking, error) {
+	query := `
+		SELECT id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+		FROM bookings
+		WHERE user_id = ? AND conference_id = ? AND status != 'cancelled'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	booking, err := scanBooking(r.db.QueryRowContext(ctx, query, userID, conferenceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrBookingNotFound
+		}
+
+		return nil, fmt.Errorf("failed to fetch booking by user and conference: %w", err)
+	}
+
+	return booking, nil
+}
+
+func (r *BookingRepository) UpdateRoom(ctx context.Context, bookingID, roomID int64) (*models.Booking, error) {
+	query := `
+		UPDATE bookings
+		SET room_id = ?
+		WHERE id = ? AND status != 'cancelled'
+		RETURNING id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+	`
+
+	updated, err := scanBooking(r.db.QueryRowContext(ctx, query, roomID, bookingID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrBookingNotFound
+		}
+		return nil, fmt.Errorf("failed to update booking room: %w", err)
+	}
+
+	return updated, nil
+}
+
 func (r *BookingRepository) listBookings(ctx context.Context, query string, arg any) ([]*models.Booking, error) {
 	rows, err := r.db.QueryContext(ctx, query, arg)
 	if err != nil {

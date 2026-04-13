@@ -13,6 +13,7 @@ func NewRouter(
 	confHandler *handlers.ConferenceHandler,
 	roomHandler *handlers.RoomHandler,
 	attendeeHandler *handlers.AttendeeHandler,
+	requestHandler *handlers.RequestHandler,
 ) *gin.Engine {
 	router := gin.New()
 	router.Use(middleware.CORSMiddleware())
@@ -50,6 +51,13 @@ func NewRouter(
 
 		if attendeeHandler != nil {
 			protected.GET("/conferences/:slug/attendees", attendeeHandler.ListByConference)
+		}
+
+		if requestHandler != nil {
+			protected.POST("/requests", requestHandler.Create)
+			protected.GET("/requests", requestHandler.List)
+			protected.PUT("/requests/:id/accept", requestHandler.Accept)
+			protected.PUT("/requests/:id/decline", requestHandler.Decline)
 		}
 	}
 

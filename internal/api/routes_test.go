@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/katurdays/unconf/internal/api/handlers"
 	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/models"
+	"github.com/katurdays/unconf/internal/repository"
 	"github.com/katurdays/unconf/internal/repository/sqlite"
 	"github.com/katurdays/unconf/internal/service"
 )
@@ -62,8 +64,11 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	roomHandler := handlers.NewRoomHandler(roomService)
 	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepo)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
+	requestRepo := sqlite.NewRoommateRequestRepository(db)
+	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo)
+	requestHandler := handlers.NewRequestHandler(requestService)
 
-	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler)
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, requestHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -831,4 +836,159 @@ func TestGetAttendees_ConferenceNotFound(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func createTestRoommateRequest(t *testing.T, db *sql.DB, requesterID, targetID, roomID int64) *models.RoommateRequest {
+	t.Helper()
+	repo := sqlite.NewRoommateRequestRepository(db)
+	req, err := repo.Create(context.Background(), &models.RoommateRequest{
+		RequesterID: requesterID,
+		TargetID:    targetID,
+		RoomID:      roomID,
+		Status:      models.RoommateRequestStatusPending,
+	})
+	require.NoError(t, err)
+	return req
+}
+
+func TestRequests_RequireAuth(t *testing.T) {
+	srv, _, _ := setupIntegrationRouter(t)
+
+	resp, err := http.Get(srv.URL + "/requests")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestPostRequests_CreatesRoommateRequest(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	requester := createTestUserWithName(t, db, "gh-req-requester", "req-requester@test.com", "Requester", "public")
+	target := createTestUserWithName(t, db, "gh-req-target", "req-target@test.com", "Target", "public")
+	accessToken, _ := createTestSession(t, db, requester.ID, tokenService)
+
+	createTestConference(t, db, "conf-req-create", "Requests Create",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-req-create")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "701", "double", 120, 2)
+	createTestBooking(t, db, room.ID, requester.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/requests", strings.NewReader(`{"target_id":`+jsonNumber(target.ID)+`,"room_id":`+jsonNumber(room.ID)+`}`))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestGetRequests_ReturnsIncomingAndOutgoing(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	requester := createTestUserWithName(t, db, "gh-req-list-requester", "req-list-requester@test.com", "Requester", "public")
+	target := createTestUserWithName(t, db, "gh-req-list-target", "req-list-target@test.com", "Target", "public")
+	third := createTestUserWithName(t, db, "gh-req-list-third", "req-list-third@test.com", "Third", "public")
+	accessToken, _ := createTestSession(t, db, requester.ID, tokenService)
+
+	createTestConference(t, db, "conf-req-list", "Requests List",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-req-list")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "702", "double", 120, 3)
+	createTestBooking(t, db, room.ID, requester.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	createTestBooking(t, db, room.ID, third.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	createTestRoommateRequest(t, db, requester.ID, target.ID, room.ID)
+	createTestRoommateRequest(t, db, third.ID, requester.ID, room.ID)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/requests", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body, 2)
+
+	directions := map[string]bool{}
+	for _, row := range body {
+		directions[row["direction"].(string)] = true
+	}
+	assert.True(t, directions["incoming"])
+	assert.True(t, directions["outgoing"])
+}
+
+func TestPutRequestsAccept_AddsTargetToRoom(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	requester := createTestUserWithName(t, db, "gh-req-acc-requester", "req-acc-requester@test.com", "Requester", "public")
+	target := createTestUserWithName(t, db, "gh-req-acc-target", "req-acc-target@test.com", "Target", "public")
+
+	createTestConference(t, db, "conf-req-accept", "Requests Accept",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-req-accept")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "703", "double", 120, 2)
+	createTestBooking(t, db, room.ID, requester.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	request := createTestRoommateRequest(t, db, requester.ID, target.ID, room.ID)
+
+	targetToken, _ := createTestSession(t, db, target.ID, tokenService)
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/requests/"+jsonNumber(request.ID)+"/accept", nil)
+	req.Header.Set("Authorization", "Bearer "+targetToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	reqRepo := sqlite.NewRoommateRequestRepository(db)
+	updated, err := reqRepo.GetByID(context.Background(), request.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusAccepted, updated.Status)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	targetBooking, err := bookingRepo.GetActiveByUserAndConference(context.Background(), target.ID, conf.ID)
+	require.NoError(t, err)
+	assert.Equal(t, room.ID, targetBooking.RoomID)
+}
+
+func TestPutRequestsDecline_UpdatesStatusOnly(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	requester := createTestUserWithName(t, db, "gh-req-dec-requester", "req-dec-requester@test.com", "Requester", "public")
+	target := createTestUserWithName(t, db, "gh-req-dec-target", "req-dec-target@test.com", "Target", "public")
+
+	createTestConference(t, db, "conf-req-decline", "Requests Decline",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-req-decline")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "704", "double", 120, 2)
+	createTestBooking(t, db, room.ID, requester.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	request := createTestRoommateRequest(t, db, requester.ID, target.ID, room.ID)
+
+	targetToken, _ := createTestSession(t, db, target.ID, tokenService)
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/requests/"+jsonNumber(request.ID)+"/decline", nil)
+	req.Header.Set("Authorization", "Bearer "+targetToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	reqRepo := sqlite.NewRoommateRequestRepository(db)
+	updated, err := reqRepo.GetByID(context.Background(), request.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusDeclined, updated.Status)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	_, err = bookingRepo.GetActiveByUserAndConference(context.Background(), target.ID, conf.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}
+
+func jsonNumber(v int64) string {
+	return strconv.FormatInt(v, 10)
 }

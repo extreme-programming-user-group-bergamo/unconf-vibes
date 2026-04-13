@@ -39,3 +39,10 @@ type BookingRepository interface {
 	ListByConference(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
 	CountByConference(ctx context.Context, conferenceID int64) (int, error)
 }
+
+type RoommateRequestRepository interface {
+	Create(ctx context.Context, request *models.RoommateRequest) (*models.RoommateRequest, error)
+	GetByID(ctx context.Context, id int64) (*models.RoommateRequest, error)
+	ListByUser(ctx context.Context, userID int64) ([]*models.RoommateRequest, error)
+	UpdateStatus(ctx context.Context, id int64, status models.RoommateRequestStatus) (*models.RoommateRequest, error)
+}

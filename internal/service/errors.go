@@ -19,6 +19,13 @@ var (
 	ErrInvalidPrivacySetting = errors.New("invalid privacy setting: must be public, private, or connections_only")
 	ErrConferenceNotFound    = errors.New("conference not found")
 	ErrRoomNotFound          = errors.New("room not found")
+	ErrRoomFull              = errors.New("room is full")
+	ErrCannotRequestSelf     = errors.New("cannot request yourself")
+	ErrRequestNotFound       = errors.New("roommate request not found")
+	ErrRequestForbidden      = errors.New("roommate request is not owned by user")
+	ErrInvalidRequestState   = errors.New("roommate request is not pending")
+	ErrRequesterNotInRoom    = errors.New("requester does not occupy room")
+	ErrDuplicateRequest      = errors.New("duplicate roommate request")
 )
 
 type PendingAuthError struct {

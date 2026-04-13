@@ -232,3 +232,47 @@ func TestBookingRepository_CountByConference_NoBookings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
+
+func TestBookingRepository_GetActiveByUserAndConference_Success(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+
+	created, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	found, err := f.bookingRepo.GetActiveByUserAndConference(ctx, f.user.ID, f.conf.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created.ID, found.ID)
+}
+
+func TestBookingRepository_GetActiveByUserAndConference_NotFound(t *testing.T) {
+	f := setupBookingFixture(t)
+
+	_, err := f.bookingRepo.GetActiveByUserAndConference(context.Background(), f.user.ID, f.conf.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}
+
+func TestBookingRepository_UpdateRoom_Success(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+
+	room2, err := f.roomRepo.Create(ctx, newTestRoom(f.conf.ID, "103"))
+	require.NoError(t, err)
+
+	created, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	updated, err := f.bookingRepo.UpdateRoom(ctx, created.ID, room2.ID)
+	require.NoError(t, err)
+	assert.Equal(t, room2.ID, updated.RoomID)
+	assert.Equal(t, created.ID, updated.ID)
+}
+
+func TestBookingRepository_UpdateRoom_NotFound(t *testing.T) {
+	f := setupBookingFixture(t)
+
+	_, err := f.bookingRepo.UpdateRoom(context.Background(), 9999, f.room.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}

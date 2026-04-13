@@ -85,6 +85,7 @@ func main() {
 	conferenceRepo := sqlite.NewConferenceRepository(db)
 	roomRepo := sqlite.NewRoomRepository(db)
 	bookingRepo := sqlite.NewBookingRepository(db)
+	requestRepo := sqlite.NewRoommateRequestRepository(db)
 
 	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
@@ -93,8 +94,10 @@ func main() {
 	roomHandler := handlers.NewRoomHandler(roomService)
 	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepository)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
+	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo)
+	requestHandler := handlers.NewRequestHandler(requestService)
 
-	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler)
+	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, requestHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,
