@@ -35,6 +35,10 @@ type attendeesCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
 
+type dashboardCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
 type inviteCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
@@ -114,6 +118,10 @@ func (c *statusCommandClient) ListRoommateRequests(ctx context.Context) ([]clien
 
 func (c *attendeesCommandClient) ListAttendees(ctx context.Context, slug string) (*client.AttendeeListResponse, error) {
 	return c.authClient.ListAttendees(ctx, slug)
+}
+
+func (c *dashboardCommandClient) GetOrganizerDashboard(ctx context.Context, slug string, query client.DashboardQuery) (*client.OrganizerDashboardResponse, error) {
+	return c.authClient.GetOrganizerDashboard(ctx, slug, query)
 }
 
 func (c *inviteCommandClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
@@ -240,6 +248,9 @@ room browsing, and booking workflows.`,
 	attendeesClient := &attendeesCommandClient{
 		authClient: authClient,
 	}
+	dashboardClient := &dashboardCommandClient{
+		authClient: authClient,
+	}
 	inviteClient := &inviteCommandClient{
 		authClient: authClient,
 	}
@@ -270,6 +281,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newLogoutCmd(apiClient, store))
 	rootCmd.AddCommand(newStatusCmd(statusClient, ctxManager))
 	rootCmd.AddCommand(newAttendeesCmd(attendeesClient, ctxManager))
+	rootCmd.AddCommand(newDashboardCmd(dashboardClient, ctxManager))
 	rootCmd.AddCommand(newInviteCmd(inviteClient, ctxManager))
 	rootCmd.AddCommand(newRequestsCmd(requestsClient))
 	rootCmd.AddCommand(newListCmd(apiClient))

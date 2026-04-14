@@ -54,10 +54,12 @@ func NewRouter(
 
 		if attendeeHandler != nil {
 			attendeeRoutes := protected.Group("/conferences/:slug")
-			if organizerChecker != nil {
-				attendeeRoutes.Use(middleware.RequireOrganizer(organizerChecker))
-			}
 			attendeeRoutes.GET("/attendees", attendeeHandler.ListByConference)
+			if organizerChecker != nil {
+				attendeeRoutes.GET("/dashboard", middleware.RequireOrganizer(organizerChecker), attendeeHandler.OrganizerDashboard)
+			} else {
+				attendeeRoutes.GET("/dashboard", attendeeHandler.OrganizerDashboard)
+			}
 		}
 
 		if confHandler != nil {

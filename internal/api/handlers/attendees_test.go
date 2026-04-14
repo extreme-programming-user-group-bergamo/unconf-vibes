@@ -14,6 +14,7 @@ import (
 
 type mockAttendeeService struct {
 	listAttendeesFn func(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error)
+	dashboardFn     func(ctx context.Context, slug string, requesterUserID int64, filters service.OrganizerDashboardFilters) (*service.OrganizerDashboardResponse, error)
 }
 
 func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error) {
@@ -24,6 +25,18 @@ func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string, re
 	return &service.AttendeeListResponse{}, nil
 }
 
+func (m *mockAttendeeService) GetOrganizerDashboard(
+	ctx context.Context,
+	slug string,
+	requesterUserID int64,
+	filters service.OrganizerDashboardFilters,
+) (*service.OrganizerDashboardResponse, error) {
+	if m.dashboardFn != nil {
+		return m.dashboardFn(ctx, slug, requesterUserID, filters)
+	}
+	return &service.OrganizerDashboardResponse{}, nil
+}
+
 func setupAttendeeRouter(handler *AttendeeHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -32,6 +45,7 @@ func setupAttendeeRouter(handler *AttendeeHandler) *gin.Engine {
 		c.Next()
 	})
 	router.GET("/conferences/:slug/attendees", handler.ListByConference)
+	router.GET("/conferences/:slug/dashboard", handler.OrganizerDashboard)
 	return router
 }
 
@@ -99,4 +113,46 @@ func TestAttendeeHandler_ListByConference_ServiceError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "internal_error")
+}
+
+func TestAttendeeHandler_OrganizerDashboard_Success(t *testing.T) {
+	handler := NewAttendeeHandler(&mockAttendeeService{
+		dashboardFn: func(_ context.Context, slug string, requesterUserID int64, filters service.OrganizerDashboardFilters) (*service.OrganizerDashboardResponse, error) {
+			assert.Equal(t, "socrates-26", slug)
+			assert.Equal(t, int64(42), requesterUserID)
+			assert.Equal(t, "double", filters.RoomType)
+			assert.Equal(t, "confirmed", filters.BookingStatus)
+			assert.True(t, filters.HasSpecialRequests)
+			assert.Equal(t, "ali", filters.Search)
+			return &service.OrganizerDashboardResponse{
+				ConferenceSlug:     "socrates-26",
+				TotalRegistrations: 2,
+				CapacityUsagePct:   50,
+				Attendees: []service.OrganizerDashboardAttendeeResponse{
+					{Name: "Alice", Email: "alice@test.dev", PrivacySetting: "private", BookingStatus: "confirmed"},
+				},
+			}, nil
+		},
+	})
+
+	router := setupAttendeeRouter(handler)
+	req := httptest.NewRequest(http.MethodGet, "/conferences/socrates-26/dashboard?room_type=double&booking_status=confirmed&has_special_requests=true&q=ali", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"conference_slug":"socrates-26"`)
+	assert.Contains(t, w.Body.String(), `"capacity_usage_pct":50`)
+	assert.Contains(t, w.Body.String(), `"email":"alice@test.dev"`)
+}
+
+func TestAttendeeHandler_OrganizerDashboard_InvalidBool(t *testing.T) {
+	handler := NewAttendeeHandler(&mockAttendeeService{})
+	router := setupAttendeeRouter(handler)
+	req := httptest.NewRequest(http.MethodGet, "/conferences/socrates-26/dashboard?has_special_requests=not-bool", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid_request")
 }

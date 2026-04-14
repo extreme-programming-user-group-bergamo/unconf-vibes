@@ -1,0 +1,108 @@
+schema: 1
+story: '5.4'
+story_title: 'Story 5.4: Organizer Dashboard TUI'
+gate: PASS
+status_reason: 'Focused reconcile rerun confirms AC1-AC6 remain satisfied: `/dashboard` is organizer-gated, `/attendees` is auth-only with privacy filtering, and targeted API regression tests pass.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-15T00:00:00Z'
+quality_score: 95
+expires: '2026-04-28T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 11
+    suites:
+      - 'internal/cli/dashboard.go'
+      - 'internal/cli/dashboard_test.go'
+      - 'internal/tui/dashboard/model.go'
+      - 'internal/tui/dashboard/model_test.go'
+      - 'internal/client/dashboard.go'
+      - 'internal/client/dashboard_test.go'
+      - 'internal/client/auth_client.go'
+      - 'internal/client/auth_client_test.go::TestAuthenticatedClient_GetOrganizerDashboard_*'
+      - 'internal/api/handlers/attendees.go + attendees_test.go'
+      - 'internal/api/routes.go + routes_test.go::TestGetDashboard_*'
+      - 'internal/service/attendee_service.go + attendee_service_test.go::TestAttendeeService_GetOrganizerDashboard_*'
+  tests_executed:
+    - "go test ./internal/api -run 'TestGetDashboard|TestAttendee|TestNewRouter'"
+    - "go test ./internal/api -run 'TestGetAttendees|TestGetDashboard' -v"
+  risks_identified:
+    count: 1
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+    ac_trace:
+      - ac: 1
+        coverage:
+          - 'internal/cli/root.go'
+          - 'internal/cli/dashboard.go'
+          - 'internal/api/routes.go'
+          - 'internal/service/attendee_service.go'
+          - 'internal/cli/root_test.go::TestRootCmdIncludesDashboardCommand'
+          - 'internal/cli/dashboard_test.go::TestDashboardCmd_InteractiveLaunchesTUI'
+          - 'internal/api/routes_test.go::TestGetDashboard_NonOrganizerReturns403'
+      - ac: 2
+        coverage:
+          - 'internal/service/attendee_service.go::GetOrganizerDashboard'
+          - 'internal/service/attendee_service_test.go::TestAttendeeService_GetOrganizerDashboard_ComputesMetricsAndFilters'
+          - 'internal/api/routes_test.go::TestGetDashboard_OrganizerGetsMetricsAndPrivateData'
+      - ac: 3
+        coverage:
+          - 'internal/service/attendee_service.go::OrganizerDashboardAttendeeResponse'
+          - 'internal/client/dashboard.go::OrganizerDashboardAttendeeResponse'
+          - 'internal/api/handlers/attendees_test.go::TestAttendeeHandler_OrganizerDashboard_Success'
+      - ac: 4
+        coverage:
+          - 'internal/api/handlers/attendees.go::OrganizerDashboard'
+          - 'internal/service/attendee_service.go::organizerDashboardRowMatches'
+          - 'internal/cli/dashboard.go'
+          - 'internal/tui/dashboard/model.go'
+          - 'internal/tui/dashboard/model_test.go::TestModel_FilterAndSearchInteractionsTriggerReload'
+      - ac: 5
+        coverage:
+          - 'internal/service/attendee_service.go::organizerDashboardRowMatches'
+          - 'internal/client/dashboard.go'
+          - 'internal/tui/dashboard/model.go'
+          - 'internal/tui/dashboard/model_test.go::TestModel_FilterAndSearchInteractionsTriggerReload'
+      - ac: 6
+        coverage:
+          - 'internal/api/routes.go::RequireOrganizer + /dashboard route'
+          - 'internal/service/attendee_service.go::GetOrganizerDashboard organizer check'
+          - 'internal/api/routes_test.go::TestGetDashboard_OrganizerGetsMetricsAndPrivateData'
+          - 'internal/api/routes_test.go::TestGetDashboard_NonOrganizerReturns403'
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 1
+  recommendations:
+    must_fix: []
+    monitor:
+      - 'Keyboard regression risk: add explicit TUI tests for search cancel/backspace editing path.'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Dashboard path is auth-protected and organizer-gated in middleware plus service-level organizer verification; non-organizers receive 403.'
+  performance:
+    status: PASS
+    notes: 'No expensive new cross-service calls beyond expected bookings/rooms/users reads for organizer dashboard view.'
+  reliability:
+    status: PASS
+    notes: 'Error mapping and auth refresh paths are covered; fallback output path and full test/lint gates pass.'
+  maintainability:
+    status: PASS
+    notes: 'Implementation follows existing CLI/client/API/service layering and consistent DTO/error conventions.'
+
+recommendations:
+  immediate: []
+  future:
+    - 'Add TUI unit coverage for search edit cancel (`esc`) and backspace edge cases.'
+    - 'Add CLI test for active-context slug resolution and no-context guidance output.'

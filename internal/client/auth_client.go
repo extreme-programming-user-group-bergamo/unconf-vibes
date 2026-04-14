@@ -341,6 +341,39 @@ func (ac *AuthenticatedClient) ListAttendees(ctx context.Context, slug string) (
 	return retryAttendees, nil
 }
 
+// GetOrganizerDashboard fetches organizer dashboard data, auto-refreshing the access token on 401.
+func (ac *AuthenticatedClient) GetOrganizerDashboard(ctx context.Context, slug string, query DashboardQuery) (*OrganizerDashboardResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "GetOrganizerDashboard")
+
+	dashboard, err := ac.client.GetOrganizerDashboard(ctx, accessToken, slug, query)
+	if err == nil {
+		return dashboard, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "GetOrganizerDashboard")
+
+	retryDashboard, retryErr := ac.client.GetOrganizerDashboard(ctx, newAccessToken, slug, query)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to fetch organizer dashboard after token refresh: %w", retryErr)
+	}
+
+	return retryDashboard, nil
+}
+
 // CreateConference creates a conference, automatically refreshing the access token on 401.
 func (ac *AuthenticatedClient) CreateConference(ctx context.Context, input CreateConferenceRequest) (*ConferenceResponse, error) {
 	accessToken, err := ac.store.GetAccessToken()

@@ -659,6 +659,73 @@ func TestAuthenticatedClient_ListAttendees_AutoRefresh(t *testing.T) {
 	assert.Equal(t, int32(2), attendeesCallCount.Load())
 }
 
+func TestAuthenticatedClient_GetOrganizerDashboard_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/conferences/socrates-26/dashboard", r.URL.Path)
+		assert.Equal(t, "double", r.URL.Query().Get("room_type"))
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(OrganizerDashboardResponse{
+			ConferenceSlug:     "socrates-26",
+			TotalRegistrations: 1,
+			Attendees:          []OrganizerDashboardAttendeeResponse{{Name: "Alice"}},
+		})
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	resp, err := ac.GetOrganizerDashboard(context.Background(), "socrates-26", DashboardQuery{RoomType: "double"})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "socrates-26", resp.ConferenceSlug)
+}
+
+func TestAuthenticatedClient_GetOrganizerDashboard_AutoRefresh(t *testing.T) {
+	var dashboardCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/conferences/socrates-26/dashboard":
+			n := dashboardCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{"code": "unauthorized", "message": "token expired"},
+				})
+				return
+			}
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(OrganizerDashboardResponse{
+				ConferenceSlug:     "socrates-26",
+				TotalRegistrations: 1,
+			})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	resp, err := ac.GetOrganizerDashboard(context.Background(), "socrates-26", DashboardQuery{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int32(2), dashboardCallCount.Load())
+}
+
 func TestAuthenticatedClient_CreateRoommateRequest_AutoRefresh(t *testing.T) {
 	var requestCallCount atomic.Int32
 

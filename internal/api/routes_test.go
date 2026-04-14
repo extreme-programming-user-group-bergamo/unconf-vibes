@@ -864,7 +864,7 @@ func TestGetAttendees_RequiresAuth(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
-func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
+func TestGetAttendees_NonOrganizerReturnsPublicRowsAndPrivateCount(t *testing.T) {
 	srv, tokenService, db := setupIntegrationRouter(t)
 
 	createTestConference(t, db, "conf-attendees", "Attendees Conf",
@@ -878,7 +878,6 @@ func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
 	privateUser := createTestUserWithName(t, db, "gh-private", "private@test.com", "Private Bob", "private")
 	authUser := createTestUser(t, db)
 	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
-	createTestOrganizer(t, db, conf.ID, authUser.ID, models.ConferenceOrganizerRoleAdmin)
 
 	createTestBooking(t, db, room.ID, publicUser.ID, conf.ID, models.BookingStatusConfirmed, "public")
 	createTestBooking(t, db, room.ID, privateUser.ID, conf.ID, models.BookingStatusConfirmed, "private")
@@ -893,11 +892,12 @@ func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
 
 	var body map[string]interface{}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	assert.Equal(t, float64(0), body["private_attendees_count"])
+	assert.Equal(t, float64(1), body["private_attendees_count"])
 
 	attendees := body["attendees"].([]interface{})
-	require.Len(t, attendees, 2)
+	require.Len(t, attendees, 1)
 	row := attendees[0].(map[string]interface{})
+	assert.Equal(t, "Public Alice", row["display_name"])
 	roomInfo := row["room"].(map[string]interface{})
 	assert.Equal(t, "601", roomInfo["room_number"])
 }
@@ -936,23 +936,6 @@ func TestGetAttendees_OrganizerSeesPrivateRows(t *testing.T) {
 	assert.Equal(t, "Private Visible", row["display_name"])
 }
 
-func TestGetAttendees_NonOrganizer_Returns403(t *testing.T) {
-	srv, tokenService, db := setupIntegrationRouter(t)
-
-	createTestConference(t, db, "conf-attendees-403", "Attendees 403",
-		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
-	authUser := createTestUser(t, db)
-	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
-
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-attendees-403/attendees", nil)
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer func() { _ = resp.Body.Close() }()
-
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-}
-
 func TestGetAttendees_ConferenceNotFound(t *testing.T) {
 	srv, tokenService, db := setupIntegrationRouter(t)
 	authUser := createTestUser(t, db)
@@ -965,6 +948,69 @@ func TestGetAttendees_ConferenceNotFound(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestGetDashboard_OrganizerGetsMetricsAndPrivateData(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-dashboard", "Dashboard Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-dashboard")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "701", "double", 120.0, 2)
+	privateUser := createTestUserWithName(t, db, "gh-private-dashboard", "private-dashboard@test.com", "Private Person", "private")
+	organizer := createTestUserWithName(t, db, "gh-org-dashboard", "org-dashboard@test.com", "Org User", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	_, err = bookingRepo.Create(context.Background(), &models.Booking{
+		RoomID:         room.ID,
+		UserID:         privateUser.ID,
+		ConferenceID:   conf.ID,
+		Status:         models.BookingStatusConfirmed,
+		PrivacySetting: "private",
+		Notes:          "Wheelchair access",
+	})
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-dashboard/dashboard?has_special_requests=true&q=private", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "conf-dashboard", body["conference_slug"])
+	assert.Equal(t, float64(1), body["total_registrations"])
+	attendees := body["attendees"].([]interface{})
+	require.Len(t, attendees, 1)
+	row := attendees[0].(map[string]interface{})
+	assert.Equal(t, "Private Person", row["name"])
+	assert.Equal(t, "private-dashboard@test.com", row["email"])
+	assert.Equal(t, "private", row["privacy_setting"])
+	assert.Equal(t, "Wheelchair access", row["dietary_accessibility_note"])
+}
+
+func TestGetDashboard_NonOrganizerReturns403(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-dashboard-403", "Dashboard 403",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-dashboard-403/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestPostConferences_CreatesConferenceAndOwner(t *testing.T) {

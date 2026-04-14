@@ -86,6 +86,15 @@ func TestRootCmdIncludesAttendeesCommand(t *testing.T) {
 	assert.Equal(t, "attendees", attendeesCmd.Name())
 }
 
+func TestRootCmdIncludesDashboardCommand(t *testing.T) {
+	cmd := NewRootCmd()
+
+	dashboardCmd, _, err := cmd.Find([]string{"dashboard"})
+	require.NoError(t, err)
+	require.NotNil(t, dashboardCmd)
+	assert.Equal(t, "dashboard", dashboardCmd.Name())
+}
+
 func TestRootCmdIncludesInviteCommand(t *testing.T) {
 	cmd := NewRootCmd()
 
