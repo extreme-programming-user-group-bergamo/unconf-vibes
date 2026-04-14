@@ -407,6 +407,104 @@ func (ac *AuthenticatedClient) UpdateConference(ctx context.Context, slug string
 	return retryConference, nil
 }
 
+// CreateRoom creates a room, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) CreateRoom(ctx context.Context, slug string, input ManageRoomRequest) (*RoomResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "CreateRoom")
+
+	room, err := ac.client.CreateRoom(ctx, accessToken, slug, input)
+	if err == nil {
+		return room, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "CreateRoom")
+
+	retryRoom, retryErr := ac.client.CreateRoom(ctx, newAccessToken, slug, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to create room after token refresh: %w", retryErr)
+	}
+
+	return retryRoom, nil
+}
+
+// UpdateRoom updates a room, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) UpdateRoom(ctx context.Context, slug string, roomNumber string, input ManageRoomRequest) (*RoomResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "UpdateRoom")
+
+	room, err := ac.client.UpdateRoom(ctx, accessToken, slug, roomNumber, input)
+	if err == nil {
+		return room, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "UpdateRoom")
+
+	retryRoom, retryErr := ac.client.UpdateRoom(ctx, newAccessToken, slug, roomNumber, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to update room after token refresh: %w", retryErr)
+	}
+
+	return retryRoom, nil
+}
+
+// DeleteRoom removes a room, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) DeleteRoom(ctx context.Context, slug string, roomNumber string) error {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "DeleteRoom")
+
+	err = ac.client.DeleteRoom(ctx, accessToken, slug, roomNumber)
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "DeleteRoom")
+
+	if retryErr := ac.client.DeleteRoom(ctx, newAccessToken, slug, roomNumber); retryErr != nil {
+		return fmt.Errorf("failed to delete room after token refresh: %w", retryErr)
+	}
+
+	return nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.

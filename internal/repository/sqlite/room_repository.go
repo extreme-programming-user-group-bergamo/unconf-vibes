@@ -68,6 +68,25 @@ func (r *RoomRepository) GetByID(ctx context.Context, id int64) (*models.Room, e
 	return room, nil
 }
 
+func (r *RoomRepository) GetByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) (*models.Room, error) {
+	query := `
+		SELECT id, conference_id, room_number, room_type, price_per_night, capacity, created_at
+		FROM rooms
+		WHERE conference_id = ? AND room_number = ?
+	`
+
+	room, err := scanRoom(r.db.QueryRowContext(ctx, query, conferenceID, roomNumber))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrRoomNotFound
+		}
+
+		return nil, fmt.Errorf("failed to fetch room by conference and number: %w", err)
+	}
+
+	return room, nil
+}
+
 func (r *RoomRepository) ListByConference(ctx context.Context, conferenceID int64) ([]*models.Room, error) {
 	query := `
 		SELECT id, conference_id, room_number, room_type, price_per_night, capacity, created_at
@@ -100,6 +119,70 @@ func (r *RoomRepository) ListByConference(ctx context.Context, conferenceID int6
 	return rooms, nil
 }
 
+func (r *RoomRepository) UpdateByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string, room *models.Room) (*models.Room, error) {
+	if room == nil {
+		return nil, fmt.Errorf("failed to update room: room is nil")
+	}
+
+	query := `
+		UPDATE rooms
+		SET room_number = ?, room_type = ?, price_per_night = ?, capacity = ?
+		WHERE conference_id = ? AND room_number = ?
+		RETURNING id, conference_id, room_number, room_type, price_per_night, capacity, created_at
+	`
+
+	updated, err := scanRoom(r.db.QueryRowContext(
+		ctx,
+		query,
+		room.RoomNumber,
+		room.RoomType,
+		room.PricePerNight,
+		room.Capacity,
+		conferenceID,
+		roomNumber,
+	))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrRoomNotFound
+		}
+		if isRoomUniqueConstraintError(err) {
+			return nil, repository.ErrRoomExists
+		}
+
+		return nil, fmt.Errorf("failed to update room: %w", err)
+	}
+
+	slog.Debug("room updated", "room_id", updated.ID, "room_number", updated.RoomNumber)
+	return updated, nil
+}
+
+func (r *RoomRepository) DeleteByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) error {
+	query := `
+		DELETE FROM rooms
+		WHERE conference_id = ? AND room_number = ?
+	`
+
+	result, err := r.db.ExecContext(ctx, query, conferenceID, roomNumber)
+	if err != nil {
+		if isRoomForeignKeyConstraintError(err) {
+			return repository.ErrRoomHasBookings
+		}
+
+		return fmt.Errorf("failed to delete room: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to delete room: %w", err)
+	}
+	if rowsAffected == 0 {
+		return repository.ErrRoomNotFound
+	}
+
+	slog.Debug("room deleted", "conference_id", conferenceID, "room_number", roomNumber)
+	return nil
+}
+
 func scanRoom(s scanner) (*models.Room, error) {
 	var room models.Room
 
@@ -121,4 +204,8 @@ func scanRoom(s scanner) (*models.Room, error) {
 
 func isRoomUniqueConstraintError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed: rooms.conference_id, rooms.room_number")
+}
+
+func isRoomForeignKeyConstraintError(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "foreign key constraint failed")
 }

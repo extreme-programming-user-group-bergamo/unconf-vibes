@@ -21,6 +21,9 @@ type mockRoomsClient struct {
 	createBookingFn func(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
 	listBookingsFn  func(ctx context.Context) ([]client.BookingResponse, error)
 	createInviteFn  func(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error)
+	createRoomFn    func(ctx context.Context, slug string, input client.ManageRoomRequest) (*client.RoomResponse, error)
+	updateRoomFn    func(ctx context.Context, slug string, roomNumber string, input client.ManageRoomRequest) (*client.RoomResponse, error)
+	deleteRoomFn    func(ctx context.Context, slug string, roomNumber string) error
 }
 
 func (m *mockRoomsClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
@@ -52,6 +55,27 @@ func (m *mockRoomsClient) CreateRoommateRequest(ctx context.Context, input clien
 	}
 
 	return &client.RoommateRequestResponse{}, nil
+}
+
+func (m *mockRoomsClient) CreateRoom(ctx context.Context, slug string, input client.ManageRoomRequest) (*client.RoomResponse, error) {
+	if m.createRoomFn != nil {
+		return m.createRoomFn(ctx, slug, input)
+	}
+	return &client.RoomResponse{}, nil
+}
+
+func (m *mockRoomsClient) UpdateRoom(ctx context.Context, slug string, roomNumber string, input client.ManageRoomRequest) (*client.RoomResponse, error) {
+	if m.updateRoomFn != nil {
+		return m.updateRoomFn(ctx, slug, roomNumber, input)
+	}
+	return &client.RoomResponse{}, nil
+}
+
+func (m *mockRoomsClient) DeleteRoom(ctx context.Context, slug string, roomNumber string) error {
+	if m.deleteRoomFn != nil {
+		return m.deleteRoomFn(ctx, slug, roomNumber)
+	}
+	return nil
 }
 
 type mockRoomsContextStore struct {

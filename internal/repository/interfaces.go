@@ -39,7 +39,10 @@ type ConferenceOrganizerRepository interface {
 type RoomRepository interface {
 	Create(ctx context.Context, room *models.Room) (*models.Room, error)
 	GetByID(ctx context.Context, id int64) (*models.Room, error)
+	GetByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) (*models.Room, error)
 	ListByConference(ctx context.Context, conferenceID int64) ([]*models.Room, error)
+	UpdateByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string, room *models.Room) (*models.Room, error)
+	DeleteByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) error
 }
 
 type BookingRepository interface {

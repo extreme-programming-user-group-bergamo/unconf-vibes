@@ -72,6 +72,20 @@ func NewRouter(
 			}
 		}
 
+		if roomHandler != nil {
+			if organizerChecker != nil {
+				organizerRoomRoutes := protected.Group("/conferences/:slug")
+				organizerRoomRoutes.Use(middleware.RequireOrganizer(organizerChecker))
+				organizerRoomRoutes.POST("/rooms", roomHandler.Create)
+				organizerRoomRoutes.PUT("/rooms/:number", roomHandler.Update)
+				organizerRoomRoutes.DELETE("/rooms/:number", roomHandler.Delete)
+			} else {
+				protected.POST("/conferences/:slug/rooms", roomHandler.Create)
+				protected.PUT("/conferences/:slug/rooms/:number", roomHandler.Update)
+				protected.DELETE("/conferences/:slug/rooms/:number", roomHandler.Delete)
+			}
+		}
+
 		if organizerHandler != nil {
 			ownerRoutes := protected.Group("/conferences/:slug")
 			if organizerChecker != nil {

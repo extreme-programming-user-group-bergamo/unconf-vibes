@@ -16,7 +16,10 @@ import (
 type mockRoomRepository struct {
 	listByConferenceFn func(ctx context.Context, conferenceID int64) ([]*models.Room, error)
 	getByIDFn          func(ctx context.Context, id int64) (*models.Room, error)
+	getByConfAndNumFn  func(ctx context.Context, conferenceID int64, roomNumber string) (*models.Room, error)
 	createFn           func(ctx context.Context, room *models.Room) (*models.Room, error)
+	updateFn           func(ctx context.Context, conferenceID int64, roomNumber string, room *models.Room) (*models.Room, error)
+	deleteFn           func(ctx context.Context, conferenceID int64, roomNumber string) error
 }
 
 func (m *mockRoomRepository) ListByConference(ctx context.Context, conferenceID int64) ([]*models.Room, error) {
@@ -33,11 +36,32 @@ func (m *mockRoomRepository) GetByID(ctx context.Context, id int64) (*models.Roo
 	return nil, nil
 }
 
+func (m *mockRoomRepository) GetByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) (*models.Room, error) {
+	if m.getByConfAndNumFn != nil {
+		return m.getByConfAndNumFn(ctx, conferenceID, roomNumber)
+	}
+	return nil, nil
+}
+
 func (m *mockRoomRepository) Create(ctx context.Context, room *models.Room) (*models.Room, error) {
 	if m.createFn != nil {
 		return m.createFn(ctx, room)
 	}
 	return nil, nil
+}
+
+func (m *mockRoomRepository) UpdateByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string, room *models.Room) (*models.Room, error) {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, conferenceID, roomNumber, room)
+	}
+	return nil, nil
+}
+
+func (m *mockRoomRepository) DeleteByConferenceAndNumber(ctx context.Context, conferenceID int64, roomNumber string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, conferenceID, roomNumber)
+	}
+	return nil
 }
 
 type mockBookingRepository struct {
@@ -434,4 +458,95 @@ func TestRoomService_ListRooms_UserFetchError_FallsBackToUnknown(t *testing.T) {
 	require.Len(t, results[0].Occupants, 1)
 	assert.Nil(t, results[0].Occupants[0].UserID)
 	assert.Equal(t, "Unknown", results[0].Occupants[0].DisplayName)
+}
+
+func TestRoomService_CreateRoom_Success(t *testing.T) {
+	conf := testConference()
+	svc := newTestRoomService(
+		&mockConferenceRepository{getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil }},
+		&mockRoomRepository{createFn: func(_ context.Context, room *models.Room) (*models.Room, error) {
+			assert.Equal(t, conf.ID, room.ConferenceID)
+			assert.Equal(t, "101", room.RoomNumber)
+			return &models.Room{ID: 1, ConferenceID: conf.ID, RoomNumber: "101", RoomType: "double", PricePerNight: 100, Capacity: 2}, nil
+		}},
+		&mockBookingRepository{},
+		&mockUserRepository{},
+	)
+
+	created, err := svc.CreateRoom(context.Background(), conf.Slug, ManageRoomInput{
+		RoomNumber:    "101",
+		RoomType:      "double",
+		PricePerNight: 100,
+		Capacity:      2,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	assert.Equal(t, "101", created.RoomNumber)
+}
+
+func TestRoomService_UpdateRoom_Success(t *testing.T) {
+	conf := testConference()
+	svc := newTestRoomService(
+		&mockConferenceRepository{getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil }},
+		&mockRoomRepository{updateFn: func(_ context.Context, conferenceID int64, roomNumber string, room *models.Room) (*models.Room, error) {
+			assert.Equal(t, conf.ID, conferenceID)
+			assert.Equal(t, "101", roomNumber)
+			assert.Equal(t, "102", room.RoomNumber)
+			return &models.Room{
+				ID:            1,
+				ConferenceID:  conf.ID,
+				RoomNumber:    "102",
+				RoomType:      room.RoomType,
+				PricePerNight: room.PricePerNight,
+				Capacity:      room.Capacity,
+			}, nil
+		}},
+		&mockBookingRepository{},
+		&mockUserRepository{},
+	)
+
+	updated, err := svc.UpdateRoom(context.Background(), conf.Slug, "101", ManageRoomInput{
+		RoomNumber:    "102",
+		RoomType:      "triple",
+		PricePerNight: 180,
+		Capacity:      3,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "102", updated.RoomNumber)
+}
+
+func TestRoomService_UpdateRoom_NotFoundMapsToServiceError(t *testing.T) {
+	conf := testConference()
+	svc := newTestRoomService(
+		&mockConferenceRepository{getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil }},
+		&mockRoomRepository{updateFn: func(_ context.Context, _ int64, _ string, _ *models.Room) (*models.Room, error) {
+			return nil, repository.ErrRoomNotFound
+		}},
+		&mockBookingRepository{},
+		&mockUserRepository{},
+	)
+
+	_, err := svc.UpdateRoom(context.Background(), conf.Slug, "999", ManageRoomInput{
+		RoomNumber:    "999",
+		RoomType:      "double",
+		PricePerNight: 120,
+		Capacity:      2,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomNotFound)
+}
+
+func TestRoomService_DeleteRoom_HasBookings(t *testing.T) {
+	conf := testConference()
+	svc := newTestRoomService(
+		&mockConferenceRepository{getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil }},
+		&mockRoomRepository{deleteFn: func(_ context.Context, _ int64, _ string) error { return repository.ErrRoomHasBookings }},
+		&mockBookingRepository{},
+		&mockUserRepository{},
+	)
+
+	err := svc.DeleteRoom(context.Background(), conf.Slug, "101")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomHasBookings)
 }

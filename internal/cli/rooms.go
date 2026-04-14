@@ -25,6 +25,9 @@ type RoomsClient interface {
 	CreateBooking(ctx context.Context, input client.CreateBookingRequest) (*client.BookingResponse, error)
 	ListBookings(ctx context.Context) ([]client.BookingResponse, error)
 	CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error)
+	CreateRoom(ctx context.Context, slug string, input client.ManageRoomRequest) (*client.RoomResponse, error)
+	UpdateRoom(ctx context.Context, slug string, roomNumber string, input client.ManageRoomRequest) (*client.RoomResponse, error)
+	DeleteRoom(ctx context.Context, slug string, roomNumber string) error
 }
 
 // RoomsContextStore defines the interface for reading active conference context.
@@ -94,7 +97,7 @@ func newRoomsCmd(roomsClient RoomsClient, ctxStore RoomsContextStore) *cobra.Com
 }
 
 func newRoomsCmdWithChecker(roomsClient RoomsClient, ctxStore RoomsContextStore, checker terminalCapabilityChecker) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "rooms [conference-slug]",
 		Short: "Browse conference rooms",
 		Long:  "Launches the room explorer TUI for a conference. If no slug is provided, uses the active conference context.",
@@ -111,6 +114,15 @@ func newRoomsCmdWithChecker(roomsClient RoomsClient, ctxStore RoomsContextStore,
 			return runRooms(cmd, roomsClient, checker, slug)
 		},
 	}
+
+	cmd.AddCommand(
+		newRoomsAddCmd(roomsClient, ctxStore),
+		newRoomsImportCmd(roomsClient, ctxStore),
+		newRoomsEditCmd(roomsClient, ctxStore),
+		newRoomsRemoveCmd(roomsClient, ctxStore),
+	)
+
+	return cmd
 }
 
 func resolveRoomsSlug(cmd *cobra.Command, ctxStore RoomsContextStore, args []string) (string, error) {

@@ -68,6 +68,18 @@ func (c *roomsCommandClient) CreateRoommateRequest(ctx context.Context, input cl
 	return c.bookingClient.CreateRoommateRequest(ctx, input)
 }
 
+func (c *roomsCommandClient) CreateRoom(ctx context.Context, slug string, input client.ManageRoomRequest) (*client.RoomResponse, error) {
+	return c.bookingClient.CreateRoom(ctx, slug, input)
+}
+
+func (c *roomsCommandClient) UpdateRoom(ctx context.Context, slug string, roomNumber string, input client.ManageRoomRequest) (*client.RoomResponse, error) {
+	return c.bookingClient.UpdateRoom(ctx, slug, roomNumber, input)
+}
+
+func (c *roomsCommandClient) DeleteRoom(ctx context.Context, slug string, roomNumber string) error {
+	return c.bookingClient.DeleteRoom(ctx, slug, roomNumber)
+}
+
 func (c *bookCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.roomsClient.ListRooms(ctx, slug)
 }

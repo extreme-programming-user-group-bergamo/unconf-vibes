@@ -21,6 +21,8 @@ var (
 	ErrRoomFull             = errors.New("room is at capacity")
 	ErrAlreadyBooked        = errors.New("user already has a booking for this conference")
 	ErrRoomNotFound         = errors.New("room not found")
+	ErrRoomExists           = errors.New("room already exists")
+	ErrRoomHasBookings      = errors.New("room has bookings")
 	ErrBookingNotFound      = errors.New("booking not found")
 	ErrBookingForbidden     = errors.New("booking cannot be cancelled by current user")
 	ErrTargetUserNotFound   = errors.New("target user not found")

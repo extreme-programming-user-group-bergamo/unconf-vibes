@@ -71,3 +71,45 @@ func TestListRooms_ServerError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to list rooms")
 }
+
+func TestCreateRoom_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "conflict",
+				"message": "room exists",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	room, err := c.CreateRoom(context.Background(), "token", "socrates-26", ManageRoomRequest{
+		RoomNumber:    "101",
+		RoomType:      "double",
+		PricePerNight: 100,
+		Capacity:      2,
+	})
+	assert.Nil(t, room)
+	assert.ErrorIs(t, err, ErrRoomExists)
+}
+
+func TestDeleteRoom_HasBookings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "conflict",
+				"message": "room has bookings",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.DeleteRoom(context.Background(), "token", "socrates-26", "101")
+	assert.ErrorIs(t, err, ErrRoomHasBookings)
+}

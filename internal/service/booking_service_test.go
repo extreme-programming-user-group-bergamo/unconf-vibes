@@ -53,6 +53,15 @@ func (m *mockBookingServiceRoomRepo) GetByID(ctx context.Context, id int64) (*mo
 func (m *mockBookingServiceRoomRepo) ListByConference(context.Context, int64) ([]*models.Room, error) {
 	panic("not implemented")
 }
+func (m *mockBookingServiceRoomRepo) GetByConferenceAndNumber(context.Context, int64, string) (*models.Room, error) {
+	panic("not implemented")
+}
+func (m *mockBookingServiceRoomRepo) UpdateByConferenceAndNumber(context.Context, int64, string, *models.Room) (*models.Room, error) {
+	panic("not implemented")
+}
+func (m *mockBookingServiceRoomRepo) DeleteByConferenceAndNumber(context.Context, int64, string) error {
+	panic("not implemented")
+}
 
 type mockBookingServiceConferenceRepo struct {
 	listFn func(context.Context) ([]*models.Conference, error)

@@ -136,3 +136,42 @@ func TestRoomRepository_ListByConference_OnlySpecifiedConference(t *testing.T) {
 	require.Len(t, rooms, 1)
 	assert.Equal(t, "101", rooms[0].RoomNumber)
 }
+
+func TestRoomRepository_UpdateByConferenceAndNumber_Success(t *testing.T) {
+	db := setupTestDB(t)
+	confRepo := NewConferenceRepository(db)
+	roomRepo := NewRoomRepository(db)
+
+	conf, err := confRepo.Create(context.Background(), newTestConference("update-room"))
+	require.NoError(t, err)
+	_, err = roomRepo.Create(context.Background(), newTestRoom(conf.ID, "101"))
+	require.NoError(t, err)
+
+	updated, err := roomRepo.UpdateByConferenceAndNumber(context.Background(), conf.ID, "101", &models.Room{
+		RoomNumber:    "102",
+		RoomType:      "triple",
+		PricePerNight: 200,
+		Capacity:      3,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "102", updated.RoomNumber)
+	assert.Equal(t, "triple", updated.RoomType)
+}
+
+func TestRoomRepository_DeleteByConferenceAndNumber_Success(t *testing.T) {
+	db := setupTestDB(t)
+	confRepo := NewConferenceRepository(db)
+	roomRepo := NewRoomRepository(db)
+
+	conf, err := confRepo.Create(context.Background(), newTestConference("delete-room"))
+	require.NoError(t, err)
+	_, err = roomRepo.Create(context.Background(), newTestRoom(conf.ID, "101"))
+	require.NoError(t, err)
+
+	err = roomRepo.DeleteByConferenceAndNumber(context.Background(), conf.ID, "101")
+	require.NoError(t, err)
+
+	_, err = roomRepo.GetByConferenceAndNumber(context.Background(), conf.ID, "101")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrRoomNotFound)
+}

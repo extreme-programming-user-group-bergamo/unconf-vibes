@@ -13,6 +13,7 @@ var (
 	ErrConferenceOrganizerExists   = errors.New("conference organizer already exists")
 	ErrRoomNotFound                = errors.New("room not found")
 	ErrRoomExists                  = errors.New("room already exists")
+	ErrRoomHasBookings             = errors.New("room has bookings")
 	ErrBookingNotFound             = errors.New("booking not found")
 	ErrBookingExists               = errors.New("booking already exists")
 	ErrRoommateRequestNotFound     = errors.New("roommate request not found")

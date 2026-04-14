@@ -751,6 +751,68 @@ func TestGetRooms_NoAuthRequired(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestPostRooms_OrganizerOnly(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-post-room", "Post Room",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-post-room")
+	require.NoError(t, err)
+
+	organizer := createTestUserWithName(t, db, "gh-org-room", "org-room@test.com", "Organizer", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences/conf-post-room/rooms", strings.NewReader(`{"room_number":"901","room_type":"double","price_per_night":120,"capacity":2}`))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestPostRooms_NonOrganizer_Returns403(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-post-room-forbidden", "Post Room Forbidden",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+
+	nonOrganizer := createTestUserWithName(t, db, "gh-non-org-room", "non-org-room@test.com", "Non Organizer", "public")
+	accessToken, _ := createTestSession(t, db, nonOrganizer.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences/conf-post-room-forbidden/rooms", strings.NewReader(`{"room_number":"901","room_type":"double","price_per_night":120,"capacity":2}`))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+func TestDeleteRooms_FailsWhenBookingsExist(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-delete-room", "Delete Room",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-delete-room")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "902", "double", 120, 2)
+
+	organizer := createTestUserWithName(t, db, "gh-org-delete-room", "org-delete-room@test.com", "Organizer", "public")
+	attendee := createTestUserWithName(t, db, "gh-att-delete-room", "att-delete-room@test.com", "Attendee", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	createTestBooking(t, db, room.ID, attendee.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/conferences/conf-delete-room/rooms/902", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+}
+
 func TestGetConferences_ReturnsRealAttendeeCount(t *testing.T) {
 	srv, _, db := setupIntegrationRouter(t)
 
