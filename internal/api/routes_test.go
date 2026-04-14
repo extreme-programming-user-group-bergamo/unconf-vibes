@@ -918,6 +918,11 @@ func TestGetRequests_ReturnsIncomingAndOutgoing(t *testing.T) {
 	directions := map[string]bool{}
 	for _, row := range body {
 		directions[row["direction"].(string)] = true
+		assert.NotEmpty(t, row["requester_name"])
+		assert.NotEmpty(t, row["target_name"])
+		assert.NotEmpty(t, row["room_number"])
+		assert.NotEmpty(t, row["room_type"])
+		assert.NotZero(t, row["conference_id"])
 	}
 	assert.True(t, directions["incoming"])
 	assert.True(t, directions["outgoing"])

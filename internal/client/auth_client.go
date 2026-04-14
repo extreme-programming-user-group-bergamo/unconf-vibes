@@ -227,6 +227,54 @@ func (ac *AuthenticatedClient) ListRoommateRequests(ctx context.Context) ([]Room
 	return retryRequests, nil
 }
 
+// AcceptRoommateRequest accepts a roommate request, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) AcceptRoommateRequest(ctx context.Context, requestID int64) (*RoommateRequestResponse, error) {
+	return ac.respondToRoommateRequest(ctx, requestID, "AcceptRoommateRequest", "accept roommate request", ac.client.AcceptRoommateRequest)
+}
+
+// DeclineRoommateRequest declines a roommate request, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) DeclineRoommateRequest(ctx context.Context, requestID int64) (*RoommateRequestResponse, error) {
+	return ac.respondToRoommateRequest(ctx, requestID, "DeclineRoommateRequest", "decline roommate request", ac.client.DeclineRoommateRequest)
+}
+
+func (ac *AuthenticatedClient) respondToRoommateRequest(
+	ctx context.Context,
+	requestID int64,
+	method string,
+	action string,
+	call func(context.Context, string, int64) (*RoommateRequestResponse, error),
+) (*RoommateRequestResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", method)
+
+	request, err := call(ctx, accessToken, requestID)
+	if err == nil {
+		return request, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", method)
+
+	retryRequest, retryErr := call(ctx, newAccessToken, requestID)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to %s after token refresh: %w", action, retryErr)
+	}
+
+	return retryRequest, nil
+}
+
 // ListAttendees fetches conference attendees, automatically refreshing the access token on 401.
 func (ac *AuthenticatedClient) ListAttendees(ctx context.Context, slug string) (*AttendeeListResponse, error) {
 	accessToken, err := ac.store.GetAccessToken()

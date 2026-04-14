@@ -39,6 +39,10 @@ type inviteCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
 
+type requestsCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
 func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.listClient.ListRooms(ctx, slug)
 }
@@ -89,6 +93,18 @@ func (c *inviteCommandClient) ListBookings(ctx context.Context) ([]client.Bookin
 
 func (c *inviteCommandClient) CreateRoommateRequest(ctx context.Context, input client.CreateRoommateRequestRequest) (*client.RoommateRequestResponse, error) {
 	return c.authClient.CreateRoommateRequest(ctx, input)
+}
+
+func (c *requestsCommandClient) ListRoommateRequests(ctx context.Context) ([]client.RoommateRequestResponse, error) {
+	return c.authClient.ListRoommateRequests(ctx)
+}
+
+func (c *requestsCommandClient) AcceptRoommateRequest(ctx context.Context, requestID int64) (*client.RoommateRequestResponse, error) {
+	return c.authClient.AcceptRoommateRequest(ctx, requestID)
+}
+
+func (c *requestsCommandClient) DeclineRoommateRequest(ctx context.Context, requestID int64) (*client.RoommateRequestResponse, error) {
+	return c.authClient.DeclineRoommateRequest(ctx, requestID)
 }
 
 func NewRootCmd() *cobra.Command {
@@ -186,6 +202,9 @@ room browsing, and booking workflows.`,
 	inviteClient := &inviteCommandClient{
 		authClient: authClient,
 	}
+	requestsClient := &requestsCommandClient{
+		authClient: authClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -204,6 +223,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newStatusCmd(statusClient, ctxManager))
 	rootCmd.AddCommand(newAttendeesCmd(attendeesClient, ctxManager))
 	rootCmd.AddCommand(newInviteCmd(inviteClient, ctxManager))
+	rootCmd.AddCommand(newRequestsCmd(requestsClient))
 	rootCmd.AddCommand(newListCmd(apiClient))
 	rootCmd.AddCommand(newInfoCmd(apiClient, ctxManager))
 	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))

@@ -142,7 +142,7 @@ func renderBookingProjection(out io.Writer, booking client.BookingResponse, incl
 	_, _ = fmt.Fprintf(out, "  Privacy:    %s\n", strings.TrimSpace(booking.PrivacySetting))
 	_, _ = fmt.Fprintf(out, "  Status:     %s\n", strings.TrimSpace(booking.Status))
 	renderRoommates(out, booking.Roommates)
-	renderPendingRequestPlaceholder(out, requests)
+	renderRequestSummary(out, requests)
 }
 
 func renderRoommates(out io.Writer, roommates []client.BookingRoommateResponse) {
@@ -167,13 +167,21 @@ func renderRoommates(out io.Writer, roommates []client.BookingRoommateResponse) 
 	}
 }
 
-func renderPendingRequestPlaceholder(out io.Writer, requests []client.RoommateRequestResponse) {
+func renderRequestSummary(out io.Writer, requests []client.RoommateRequestResponse) {
 	incoming, outgoing := pendingRequestCounts(requests)
+	updates := resolvedRequestUpdates(requests)
 
-	_, _ = fmt.Fprintln(out, "  Pending roommate requests (Epic 4 placeholder):")
-	_, _ = fmt.Fprintf(out, "    Incoming: %d\n", incoming)
-	_, _ = fmt.Fprintf(out, "    Outgoing: %d\n", outgoing)
-	_, _ = fmt.Fprintln(out, "    Note: Full roommate request workflow arrives in Epic 4.")
+	_, _ = fmt.Fprintln(out, "  Roommate requests:")
+	_, _ = fmt.Fprintf(out, "    Pending incoming: %d\n", incoming)
+	_, _ = fmt.Fprintf(out, "    Pending outgoing: %d\n", outgoing)
+	if len(updates) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintln(out, "    Recent updates:")
+	for i := range updates {
+		_, _ = fmt.Fprintf(out, "      - %s\n", updates[i])
+	}
 }
 
 func pendingRequestCounts(requests []client.RoommateRequestResponse) (int, int) {
@@ -197,6 +205,46 @@ func pendingRequestCounts(requests []client.RoommateRequestResponse) (int, int) 
 	}
 
 	return incoming, outgoing
+}
+
+func resolvedRequestUpdates(requests []client.RoommateRequestResponse) []string {
+	updates := make([]string, 0)
+
+	for i := range requests {
+		status := strings.ToLower(strings.TrimSpace(requests[i].Status))
+		if status != "accepted" && status != "declined" {
+			continue
+		}
+
+		direction := strings.ToLower(strings.TrimSpace(requests[i].Direction))
+		switch direction {
+		case "incoming":
+			updates = append(updates, fmt.Sprintf("%s %s's request for room %s",
+				titleWord(status),
+				requestRequesterName(requests[i]),
+				requestRoomNumber(requests[i]),
+			))
+		case "outgoing":
+			updates = append(updates, fmt.Sprintf("Your request to %s was %s",
+				requestTargetName(requests[i]),
+				status,
+			))
+		default:
+			updates = append(updates, fmt.Sprintf("Request %d is %s", requests[i].ID, status))
+		}
+	}
+
+	sort.Strings(updates)
+	return updates
+}
+
+func titleWord(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return trimmed
+	}
+
+	return strings.ToUpper(trimmed[:1]) + trimmed[1:]
 }
 
 func filterBookingsByConference(bookings []client.BookingResponse, conferenceID int64, conferenceSlug string) []client.BookingResponse {

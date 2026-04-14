@@ -146,13 +146,18 @@ func TestRequestHandler_List_Success(t *testing.T) {
 			assert.Equal(t, int64(9), userID)
 			return []service.RoommateRequestView{
 				{
-					ID:          1,
-					RequesterID: 9,
-					TargetID:    2,
-					RoomID:      3,
-					Status:      models.RoommateRequestStatusPending,
-					Direction:   "outgoing",
-					CreatedAt:   "2026-01-01T12:00:00Z",
+					ID:            1,
+					RequesterID:   9,
+					TargetID:      2,
+					RoomID:        3,
+					RoomNumber:    "101",
+					RoomType:      "double",
+					ConferenceID:  5,
+					Status:        models.RoommateRequestStatusPending,
+					Direction:     "outgoing",
+					RequesterName: "Requester",
+					TargetName:    "Target",
+					CreatedAt:     "2026-01-01T12:00:00Z",
 				},
 			}, nil
 		},
@@ -170,6 +175,9 @@ func TestRequestHandler_List_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"direction":"outgoing"`)
+	assert.Contains(t, w.Body.String(), `"requester_name":"Requester"`)
+	assert.Contains(t, w.Body.String(), `"target_name":"Target"`)
+	assert.Contains(t, w.Body.String(), `"room_number":"101"`)
 }
 
 func TestRequestHandler_Accept_Forbidden(t *testing.T) {

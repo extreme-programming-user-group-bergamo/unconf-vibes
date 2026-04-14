@@ -47,13 +47,19 @@ type CreateRoommateRequestInput struct {
 }
 
 type RoommateRequestView struct {
-	ID          int64                        `json:"id"`
-	RequesterID int64                        `json:"requester_id"`
-	TargetID    int64                        `json:"target_id"`
-	RoomID      int64                        `json:"room_id"`
-	Status      models.RoommateRequestStatus `json:"status"`
-	Direction   string                       `json:"direction"`
-	CreatedAt   string                       `json:"created_at"`
+	ID             int64                        `json:"id"`
+	RequesterID    int64                        `json:"requester_id"`
+	TargetID       int64                        `json:"target_id"`
+	RoomID         int64                        `json:"room_id"`
+	RoomNumber     string                       `json:"room_number,omitempty"`
+	RoomType       string                       `json:"room_type,omitempty"`
+	ConferenceID   int64                        `json:"conference_id"`
+	ConferenceSlug string                       `json:"conference_slug,omitempty"`
+	Status         models.RoommateRequestStatus `json:"status"`
+	Direction      string                       `json:"direction"`
+	RequesterName  string                       `json:"requester_name,omitempty"`
+	TargetName     string                       `json:"target_name,omitempty"`
+	CreatedAt      string                       `json:"created_at"`
 }
 
 func NewRequestService(
@@ -172,22 +178,61 @@ func (s *RequestService) ListRequests(ctx context.Context, userID int64) ([]Room
 
 	result := make([]RoommateRequestView, 0, len(requests))
 	for _, req := range requests {
+		room, roomErr := s.roomRepo.GetByID(ctx, req.RoomID)
+		if roomErr != nil {
+			return nil, fmt.Errorf("failed to list roommate requests: failed to load room %d: %w", req.RoomID, roomErr)
+		}
+
+		requesterName, err := s.lookupUserDisplayName(ctx, req.RequesterID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list roommate requests: failed to load requester %d: %w", req.RequesterID, err)
+		}
+
+		targetName, err := s.lookupUserDisplayName(ctx, req.TargetID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list roommate requests: failed to load target %d: %w", req.TargetID, err)
+		}
+
 		direction := "incoming"
 		if req.RequesterID == userID {
 			direction = "outgoing"
 		}
 		result = append(result, RoommateRequestView{
-			ID:          req.ID,
-			RequesterID: req.RequesterID,
-			TargetID:    req.TargetID,
-			RoomID:      req.RoomID,
-			Status:      req.Status,
-			Direction:   direction,
-			CreatedAt:   req.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			ID:            req.ID,
+			RequesterID:   req.RequesterID,
+			TargetID:      req.TargetID,
+			RoomID:        req.RoomID,
+			RoomNumber:    strings.TrimSpace(room.RoomNumber),
+			RoomType:      strings.TrimSpace(room.RoomType),
+			ConferenceID:  room.ConferenceID,
+			Status:        req.Status,
+			Direction:     direction,
+			RequesterName: requesterName,
+			TargetName:    targetName,
+			CreatedAt:     req.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		})
 	}
 
 	return result, nil
+}
+
+func (s *RequestService) lookupUserDisplayName(ctx context.Context, userID int64) (string, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+
+	displayName := strings.TrimSpace(user.DisplayName)
+	if displayName != "" {
+		return displayName, nil
+	}
+
+	githubID := strings.TrimSpace(user.GitHubID)
+	if githubID != "" {
+		return githubID, nil
+	}
+
+	return fmt.Sprintf("user #%d", userID), nil
 }
 
 func (s *RequestService) AcceptRequest(ctx context.Context, requestID int64, userID int64) (*models.RoommateRequest, error) {

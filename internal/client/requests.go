@@ -19,6 +19,8 @@ type RoommateRequestResponse struct {
 	RequesterID    int64  `json:"requester_id"`
 	TargetID       int64  `json:"target_id"`
 	RoomID         int64  `json:"room_id"`
+	RoomNumber     string `json:"room_number,omitempty"`
+	RoomType       string `json:"room_type,omitempty"`
 	ConferenceID   int64  `json:"conference_id"`
 	ConferenceSlug string `json:"conference_slug,omitempty"`
 	Status         string `json:"status"`
@@ -101,4 +103,51 @@ func (c *Client) ListRoommateRequests(ctx context.Context, accessToken string) (
 	}
 
 	return result, nil
+}
+
+// AcceptRoommateRequest accepts a roommate request via PUT /requests/{id}/accept.
+func (c *Client) AcceptRoommateRequest(ctx context.Context, accessToken string, requestID int64) (*RoommateRequestResponse, error) {
+	return c.respondToRoommateRequest(ctx, accessToken, requestID, "accept")
+}
+
+// DeclineRoommateRequest declines a roommate request via PUT /requests/{id}/decline.
+func (c *Client) DeclineRoommateRequest(ctx context.Context, accessToken string, requestID int64) (*RoommateRequestResponse, error) {
+	return c.respondToRoommateRequest(ctx, accessToken, requestID, "decline")
+}
+
+func (c *Client) respondToRoommateRequest(ctx context.Context, accessToken string, requestID int64, action string) (*RoommateRequestResponse, error) {
+	var result RoommateRequestResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Put(fmt.Sprintf("/requests/%d/%s", requestID, action))
+	if err != nil {
+		return nil, fmt.Errorf("failed to %s roommate request: %w", action, err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to %s roommate request: %w", action, ErrUnauthorized)
+	}
+
+	if resp.StatusCode() == http.StatusNotFound && errEnvelope.Error.Code == "not_found" {
+		return nil, fmt.Errorf("failed to %s roommate request: %w", action, ErrRequestNotFound)
+	}
+
+	if resp.StatusCode() == http.StatusForbidden && errEnvelope.Error.Code == "forbidden" {
+		return nil, fmt.Errorf("failed to %s roommate request: %w", action, ErrRequestForbidden)
+	}
+
+	if resp.StatusCode() == http.StatusConflict && errEnvelope.Error.Code == "invalid_request_state" {
+		return nil, fmt.Errorf("failed to %s roommate request: %w", action, ErrInvalidRequestState)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to %s roommate request: %s (HTTP %d)", action, errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
 }

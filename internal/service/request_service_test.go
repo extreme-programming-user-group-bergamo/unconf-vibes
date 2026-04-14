@@ -298,3 +298,75 @@ func TestRequestService_CreateRequest_TargetAlreadyBookedRejected(t *testing.T) 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTargetAlreadyBooked)
 }
+
+func TestRequestService_ListRequests_EnrichesNamesAndRoomDetails(t *testing.T) {
+	now := time.Now().UTC()
+	svc := NewRequestService(
+		&mockRequestRepository{
+			listByUserFn: func(_ context.Context, userID int64) ([]*models.RoommateRequest, error) {
+				assert.Equal(t, int64(9), userID)
+				return []*models.RoommateRequest{
+					{
+						ID:          1,
+						RequesterID: 9,
+						TargetID:    10,
+						RoomID:      5,
+						Status:      models.RoommateRequestStatusPending,
+						CreatedAt:   now,
+					},
+					{
+						ID:          2,
+						RequesterID: 11,
+						TargetID:    9,
+						RoomID:      6,
+						Status:      models.RoommateRequestStatusAccepted,
+						CreatedAt:   now,
+					},
+				}, nil
+			},
+		},
+		&mockRequestBookingRepository{},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				switch id {
+				case 5:
+					return &models.Room{ID: 5, ConferenceID: 77, RoomNumber: "501", RoomType: "double"}, nil
+				case 6:
+					return &models.Room{ID: 6, ConferenceID: 77, RoomNumber: "601", RoomType: "single"}, nil
+				default:
+					return nil, errors.New("unexpected room id")
+				}
+			},
+		},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				switch id {
+				case 9:
+					return &models.User{ID: 9, DisplayName: "Requester"}, nil
+				case 10:
+					return &models.User{ID: 10, DisplayName: "Target"}, nil
+				case 11:
+					return &models.User{ID: 11, DisplayName: "Other"}, nil
+				default:
+					return nil, errors.New("unexpected user id")
+				}
+			},
+		},
+	)
+
+	rows, err := svc.ListRequests(context.Background(), 9)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	assert.Equal(t, "outgoing", rows[0].Direction)
+	assert.Equal(t, "Requester", rows[0].RequesterName)
+	assert.Equal(t, "Target", rows[0].TargetName)
+	assert.Equal(t, "501", rows[0].RoomNumber)
+	assert.Equal(t, "double", rows[0].RoomType)
+	assert.Equal(t, int64(77), rows[0].ConferenceID)
+
+	assert.Equal(t, "incoming", rows[1].Direction)
+	assert.Equal(t, "Other", rows[1].RequesterName)
+	assert.Equal(t, "Requester", rows[1].TargetName)
+	assert.Equal(t, "601", rows[1].RoomNumber)
+}

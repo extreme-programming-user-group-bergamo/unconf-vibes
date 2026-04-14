@@ -92,6 +92,8 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 		requests: []client.RoommateRequestResponse{
 			{ConferenceID: 2, Status: "pending", Direction: "incoming"},
 			{ConferenceID: 2, Status: "pending", Direction: "outgoing"},
+			{ConferenceID: 2, Status: "accepted", Direction: "incoming", RequesterName: "Charlie", RoomNumber: "101"},
+			{ConferenceID: 2, Status: "declined", Direction: "outgoing", TargetName: "Dora"},
 		},
 	}
 
@@ -113,9 +115,11 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 	assert.Contains(t, output, "Roommates:")
 	assert.Contains(t, output, "- Alice")
 	assert.Contains(t, output, "- Private attendee")
-	assert.Contains(t, output, "Pending roommate requests (Epic 4 placeholder)")
-	assert.Contains(t, output, "Incoming: 1")
-	assert.Contains(t, output, "Outgoing: 1")
+	assert.Contains(t, output, "Roommate requests:")
+	assert.Contains(t, output, "Pending incoming: 1")
+	assert.Contains(t, output, "Pending outgoing: 1")
+	assert.Contains(t, output, "Accepted Charlie's request for room 101")
+	assert.Contains(t, output, "Your request to Dora was declined")
 }
 
 func TestStatusCmd_AllFlagRendersAcrossConferences(t *testing.T) {
