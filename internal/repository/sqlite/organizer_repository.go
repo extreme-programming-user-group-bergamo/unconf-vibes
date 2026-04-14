@@ -99,6 +99,22 @@ func (r *OrganizerRepository) IsOrganizer(ctx context.Context, conferenceID int6
 	return exists, nil
 }
 
+func (r *OrganizerRepository) IsOrganizerForAnyConference(ctx context.Context, userID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM conference_organizers
+			WHERE user_id = ?
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, userID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to check organizer membership by user: %w", err)
+	}
+
+	return exists, nil
+}
+
 func scanConferenceOrganizer(s scanner) (*models.ConferenceOrganizer, error) {
 	var organizer models.ConferenceOrganizer
 	err := s.Scan(&organizer.ID, &organizer.ConferenceID, &organizer.UserID, &organizer.Role, &organizer.CreatedAt)

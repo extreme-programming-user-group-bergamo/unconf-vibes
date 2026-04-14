@@ -1,0 +1,105 @@
+schema: 1
+story: '5.2'
+story_title: 'Story 5.2: Conference Creation & Setup'
+gate: PASS
+status_reason: 'Post-remediation rerun confirms bootstrap create authorization and server-side slug validation are correctly enforced with passing `make test` and `make lint`.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-14T16:00:00Z'
+quality_score: 97
+expires: '2026-04-28T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 12
+    suites:
+      - 'internal/cli/create_test.go'
+      - 'internal/cli/edit_test.go'
+      - 'internal/cli/root_test.go'
+      - 'internal/client/client_test.go'
+      - 'internal/client/auth_client_test.go'
+      - 'internal/api/middleware/organizer_test.go'
+      - 'internal/api/handlers/conferences_test.go'
+      - 'internal/api/routes_test.go'
+      - 'internal/service/conference_service_test.go'
+      - 'internal/repository/sqlite/conference_repository_test.go'
+      - 'internal/service/organizer_service_test.go'
+      - 'internal/repository/sqlite/organizer_repository_test.go'
+  tests_executed:
+    - 'make test'
+    - 'make lint'
+  risks_identified:
+    count: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+    ac_trace:
+      - ac: 1
+        coverage:
+          - 'internal/cli/create.go'
+          - 'internal/cli/root.go'
+          - 'internal/cli/root_test.go::TestRootCmdIncludesCreateCommand'
+          - 'internal/cli/create_test.go::TestCreateCmd_InteractiveSuccess'
+      - ac: 2
+        coverage:
+          - 'internal/cli/conference_forms.go'
+          - 'internal/cli/create.go'
+          - 'internal/cli/edit.go'
+          - 'internal/cli/create_test.go::TestCreateCmd_InteractiveSuccess'
+      - ac: 3
+        coverage:
+          - 'internal/api/routes.go'
+          - 'internal/service/conference_service.go::CreateConference'
+          - 'internal/api/routes_test.go::TestPostConferences_BootstrapAllowedWithoutOrganizerMembership'
+          - 'internal/api/routes_test.go::TestPostConferences_NonOrganizerWithExistingConference_Returns403'
+      - ac: 4
+        coverage:
+          - 'internal/service/conference_service.go::CreateConference'
+          - 'internal/repository/sqlite/conference_repository.go::CreateWithOwner'
+          - 'internal/repository/sqlite/conference_repository_test.go::TestConferenceRepository_CreateWithOwner_Success'
+          - 'internal/api/routes_test.go::TestPostConferences_CreatesConferenceAndOwner'
+      - ac: 5
+        coverage:
+          - 'internal/cli/create.go'
+          - 'internal/cli/create_test.go::TestCreateCmd_InteractiveSuccess'
+      - ac: 6
+        coverage:
+          - 'internal/cli/edit.go'
+          - 'internal/api/routes.go'
+          - 'internal/service/conference_service.go::UpdateConference'
+          - 'internal/api/routes_test.go::TestPutConferences_OrganizerCanUpdate'
+          - 'internal/cli/edit_test.go::TestEditCmd_UsesContextAndUpdatesConference'
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 0
+  recommendations:
+    must_fix: []
+    monitor:
+      - 'Consider adding explicit CLI assertions for the full create success guidance lines (share slug + checkout hint).'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Organizer authorization is enforced by middleware for create/edit paths and validated by API/middleware tests.'
+  performance:
+    status: PASS
+    notes: 'No high-cost operations introduced in hot paths; create/edit use bounded DB operations and existing patterns.'
+  reliability:
+    status: PASS
+    notes: 'End-to-end and unit/integration coverage for create/edit and auth retry paths; quality gates passed.'
+  maintainability:
+    status: PASS
+    notes: 'Feature follows existing layering (CLI client → API handler → service → repository) with clear error mapping.'
+
+recommendations:
+  immediate: []
+  future:
+    - 'Add a direct test assertion for all `unconf create` success output lines to lock UX contract for sharing/onboarding guidance.'

@@ -57,7 +57,7 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	conferenceRepo := sqlite.NewConferenceRepository(db)
 	organizerRepo := sqlite.NewOrganizerRepository(db)
 	bookingRepo := sqlite.NewBookingRepository(db)
-	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
+	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo, organizerRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
 	organizerService := service.NewOrganizerService(conferenceRepo, organizerRepo, userRepo)
 	organizerHandler := handlers.NewOrganizerHandler(organizerService)
@@ -908,6 +908,12 @@ func TestGetAttendees_ConferenceNotFound(t *testing.T) {
 func TestPostConferences_CreatesConferenceAndOwner(t *testing.T) {
 	srv, tokenService, db := setupIntegrationRouter(t)
 	user := createTestUser(t, db)
+	createTestConference(t, db, "conf-existing", "Existing",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	existingConf, err := confRepo.GetBySlug(context.Background(), "conf-existing")
+	require.NoError(t, err)
+	createTestOrganizer(t, db, existingConf.ID, user.ID, models.ConferenceOrganizerRoleAdmin)
 	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
 
 	reqBody := `{"slug":"conf-create-owner","name":"Create Owner","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
@@ -920,7 +926,6 @@ func TestPostConferences_CreatesConferenceAndOwner(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	confRepo := sqlite.NewConferenceRepository(db)
 	createdConf, err := confRepo.GetBySlug(context.Background(), "conf-create-owner")
 	require.NoError(t, err)
 
@@ -928,6 +933,108 @@ func TestPostConferences_CreatesConferenceAndOwner(t *testing.T) {
 	membership, err := organizerRepo.GetByConferenceAndUser(context.Background(), createdConf.ID, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, models.ConferenceOrganizerRoleOwner, membership.Role)
+}
+
+func TestPostConferences_BootstrapAllowedWithoutOrganizerMembership(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"slug":"conf-no-org","name":"No Organizer","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestPostConferences_NonOrganizerWithExistingConference_Returns403(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-existing-no-org", "Existing",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"slug":"conf-no-org-2","name":"No Organizer","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+func TestPostConferences_InvalidSlug_Returns400(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"slug":"Bad.Slug","name":"Invalid Slug","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestPostConferences_SlugIsNormalizedServerSide(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"slug":"  My_Conf 2026  ","name":"Normalized","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	created, err := confRepo.GetBySlug(context.Background(), "my-conf-2026")
+	require.NoError(t, err)
+	assert.Equal(t, "my-conf-2026", created.Slug)
+}
+
+func TestPutConferences_OrganizerCanUpdate(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-edit", "Before Edit",
+		time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-edit")
+	require.NoError(t, err)
+
+	organizer := createTestUserWithName(t, db, "gh-edit", "edit@test.com", "Edit User", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	reqBody := `{"name":"After Edit","description":"updated","location":"Munich","start_date":"2026-10-08","end_date":"2026-10-11","capacity":180}`
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/conferences/conf-edit", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	updated, err := confRepo.GetBySlug(context.Background(), "conf-edit")
+	require.NoError(t, err)
+	assert.Equal(t, "After Edit", updated.Name)
+	assert.Equal(t, "Munich", updated.Location)
+	assert.Equal(t, 180, updated.Capacity)
 }
 
 func TestPostConferenceOrganizers_OwnerCanAdd(t *testing.T) {

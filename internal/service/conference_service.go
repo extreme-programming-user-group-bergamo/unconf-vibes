@@ -5,11 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/katurdays/unconf/internal/models"
 	"github.com/katurdays/unconf/internal/repository"
+)
+
+var (
+	conferenceSlugPattern  = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	conferenceSlugCollapse = regexp.MustCompile(`-+`)
 )
 
 // ConferenceResponse wraps a conference with computed fields.
@@ -37,15 +43,34 @@ type CreateConferenceInput struct {
 	HotelEmail  string
 }
 
+type UpdateConferenceInput struct {
+	Name        string
+	Description string
+	Location    string
+	StartDate   time.Time
+	EndDate     time.Time
+	Capacity    int
+	HotelEmail  string
+}
+
 // ConferenceService handles conference business logic.
 type ConferenceService struct {
-	confRepo    repository.ConferenceRepository
-	bookingRepo repository.BookingRepository
+	confRepo      repository.ConferenceRepository
+	bookingRepo   repository.BookingRepository
+	organizerRepo repository.ConferenceOrganizerRepository
 }
 
 // NewConferenceService creates a new ConferenceService with the given repositories.
-func NewConferenceService(confRepo repository.ConferenceRepository, bookingRepo repository.BookingRepository) *ConferenceService {
-	return &ConferenceService{confRepo: confRepo, bookingRepo: bookingRepo}
+func NewConferenceService(
+	confRepo repository.ConferenceRepository,
+	bookingRepo repository.BookingRepository,
+	organizerRepo repository.ConferenceOrganizerRepository,
+) *ConferenceService {
+	return &ConferenceService{
+		confRepo:      confRepo,
+		bookingRepo:   bookingRepo,
+		organizerRepo: organizerRepo,
+	}
 }
 
 // ListConferences returns all conferences with computed status and attendee count.
@@ -94,18 +119,31 @@ func (s *ConferenceService) CreateConference(ctx context.Context, creatorUserID 
 	if creatorUserID <= 0 {
 		return nil, fmt.Errorf("failed to create conference: invalid creator user id")
 	}
-	if strings.TrimSpace(input.Slug) == "" || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Location) == "" {
-		return nil, fmt.Errorf("failed to create conference: missing required fields")
+
+	conferences, err := s.confRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conference: %w", err)
 	}
-	if input.Capacity <= 0 {
-		return nil, fmt.Errorf("failed to create conference: capacity must be positive")
+
+	isOrganizer, err := s.organizerRepo.IsOrganizerForAnyConference(ctx, creatorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conference: %w", err)
 	}
-	if truncateToDate(input.EndDate).Before(truncateToDate(input.StartDate)) {
-		return nil, fmt.Errorf("failed to create conference: end date cannot be before start date")
+	if !isOrganizer && len(conferences) > 0 {
+		return nil, fmt.Errorf("failed to create conference: %w", ErrOrganizerForbidden)
+	}
+
+	slug := normalizeConferenceSlug(input.Slug)
+	if !conferenceSlugPattern.MatchString(slug) {
+		return nil, fmt.Errorf("failed to create conference: %w", ErrInvalidConferenceInput)
+	}
+
+	if err := validateConferenceFields(strings.TrimSpace(input.Name), strings.TrimSpace(input.Location), input.StartDate, input.EndDate, input.Capacity); err != nil {
+		return nil, fmt.Errorf("failed to create conference: %w", err)
 	}
 
 	created, err := s.confRepo.CreateWithOwner(ctx, &models.Conference{
-		Slug:        strings.TrimSpace(input.Slug),
+		Slug:        slug,
 		Name:        strings.TrimSpace(input.Name),
 		Description: strings.TrimSpace(input.Description),
 		Location:    strings.TrimSpace(input.Location),
@@ -122,6 +160,51 @@ func (s *ConferenceService) CreateConference(ctx context.Context, creatorUserID 
 	}
 
 	return toResponseAt(created, time.Now(), 0), nil
+}
+
+func normalizeConferenceSlug(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	normalized = conferenceSlugCollapse.ReplaceAllString(normalized, "-")
+	normalized = strings.Trim(normalized, "-")
+
+	return normalized
+}
+
+// UpdateConference updates conference details by slug while preserving slug immutability.
+func (s *ConferenceService) UpdateConference(ctx context.Context, slug string, input UpdateConferenceInput) (*ConferenceResponse, error) {
+	if strings.TrimSpace(slug) == "" {
+		return nil, fmt.Errorf("failed to update conference: missing conference slug")
+	}
+
+	if err := validateConferenceFields(strings.TrimSpace(input.Name), strings.TrimSpace(input.Location), input.StartDate, input.EndDate, input.Capacity); err != nil {
+		return nil, fmt.Errorf("failed to update conference: %w", err)
+	}
+
+	updated, err := s.confRepo.UpdateBySlug(ctx, slug, &models.Conference{
+		Name:        strings.TrimSpace(input.Name),
+		Description: strings.TrimSpace(input.Description),
+		Location:    strings.TrimSpace(input.Location),
+		StartDate:   input.StartDate,
+		EndDate:     input.EndDate,
+		Capacity:    input.Capacity,
+		HotelEmail:  strings.TrimSpace(input.HotelEmail),
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrConferenceNotFound) {
+			return nil, fmt.Errorf("failed to update conference: %w", ErrConferenceNotFound)
+		}
+		return nil, fmt.Errorf("failed to update conference: %w", err)
+	}
+
+	attendeeCount, countErr := s.bookingRepo.CountByConference(ctx, updated.ID)
+	if countErr != nil {
+		slog.Error("failed to count attendees for conference", "error", countErr, "conference_id", updated.ID)
+		attendeeCount = 0
+	}
+
+	return toResponseAt(updated, time.Now(), attendeeCount), nil
 }
 
 // DeriveStatus computes the conference status from its dates using the current time.
@@ -153,6 +236,20 @@ func DeriveStatusAt(conf *models.Conference, now time.Time) string {
 func truncateToDate(t time.Time) time.Time {
 	u := t.UTC()
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func validateConferenceFields(name, location string, startDate, endDate time.Time, capacity int) error {
+	if name == "" || location == "" {
+		return fmt.Errorf("%w: missing required fields", ErrInvalidConferenceInput)
+	}
+	if capacity <= 0 {
+		return fmt.Errorf("%w: capacity must be positive", ErrInvalidConferenceInput)
+	}
+	if truncateToDate(endDate).Before(truncateToDate(startDate)) {
+		return fmt.Errorf("%w: end date cannot be before start date", ErrInvalidConferenceInput)
+	}
+
+	return nil
 }
 
 func toResponseAt(conf *models.Conference, now time.Time, attendeeCount int) *ConferenceResponse {

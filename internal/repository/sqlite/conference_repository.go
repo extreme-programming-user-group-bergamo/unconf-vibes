@@ -132,6 +132,40 @@ func (r *ConferenceRepository) List(ctx context.Context) ([]*models.Conference, 
 	return conferences, nil
 }
 
+func (r *ConferenceRepository) UpdateBySlug(ctx context.Context, slug string, conf *models.Conference) (*models.Conference, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("failed to update conference: conference is nil")
+	}
+
+	query := `
+		UPDATE conferences
+		SET name = ?, description = ?, location = ?, start_date = ?, end_date = ?, capacity = ?, hotel_email = ?
+		WHERE slug = ?
+		RETURNING id, slug, name, description, location, start_date, end_date, capacity, hotel_email, created_at
+	`
+
+	updated, err := scanConference(r.db.QueryRowContext(
+		ctx,
+		query,
+		conf.Name,
+		conf.Description,
+		conf.Location,
+		conf.StartDate,
+		conf.EndDate,
+		conf.Capacity,
+		conf.HotelEmail,
+		slug,
+	))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrConferenceNotFound
+		}
+		return nil, fmt.Errorf("failed to update conference: %w", err)
+	}
+
+	return updated, nil
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

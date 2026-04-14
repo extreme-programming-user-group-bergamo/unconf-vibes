@@ -43,6 +43,15 @@ type requestsCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
 
+type createConferenceCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
+type editConferenceCommandClient struct {
+	authClient *client.AuthenticatedClient
+	apiClient  *client.Client
+}
+
 func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.listClient.ListRooms(ctx, slug)
 }
@@ -113,6 +122,18 @@ func (c *requestsCommandClient) AcceptRoommateRequest(ctx context.Context, reque
 
 func (c *requestsCommandClient) DeclineRoommateRequest(ctx context.Context, requestID int64) (*client.RoommateRequestResponse, error) {
 	return c.authClient.DeclineRoommateRequest(ctx, requestID)
+}
+
+func (c *createConferenceCommandClient) CreateConference(ctx context.Context, input client.CreateConferenceRequest) (*client.ConferenceResponse, error) {
+	return c.authClient.CreateConference(ctx, input)
+}
+
+func (c *editConferenceCommandClient) GetConference(ctx context.Context, slug string) (*client.ConferenceResponse, error) {
+	return c.apiClient.GetConference(ctx, slug)
+}
+
+func (c *editConferenceCommandClient) UpdateConference(ctx context.Context, slug string, input client.UpdateConferenceRequest) (*client.ConferenceResponse, error) {
+	return c.authClient.UpdateConference(ctx, slug, input)
 }
 
 func NewRootCmd() *cobra.Command {
@@ -213,6 +234,13 @@ room browsing, and booking workflows.`,
 	requestsClient := &requestsCommandClient{
 		authClient: authClient,
 	}
+	createConferenceClient := &createConferenceCommandClient{
+		authClient: authClient,
+	}
+	editConferenceClient := &editConferenceCommandClient{
+		authClient: authClient,
+		apiClient:  apiClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -239,6 +267,8 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newBookCmd(bookClient, ctxManager))
 	rootCmd.AddCommand(newCancelCmd(bookClient, ctxManager))
 	rootCmd.AddCommand(newConfigCmd(authClient))
+	rootCmd.AddCommand(newCreateCmd(createConferenceClient))
+	rootCmd.AddCommand(newEditCmd(editConferenceClient, ctxManager))
 
 	return rootCmd
 }

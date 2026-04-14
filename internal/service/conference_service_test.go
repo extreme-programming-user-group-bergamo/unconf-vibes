@@ -17,6 +17,7 @@ type mockConferenceRepository struct {
 	getBySlugFn       func(ctx context.Context, slug string) (*models.Conference, error)
 	createFn          func(ctx context.Context, conf *models.Conference) (*models.Conference, error)
 	createWithOwnerFn func(ctx context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error)
+	updateBySlugFn    func(ctx context.Context, slug string, conf *models.Conference) (*models.Conference, error)
 }
 
 func (m *mockConferenceRepository) List(ctx context.Context) ([]*models.Conference, error) {
@@ -49,6 +50,50 @@ func (m *mockConferenceRepository) CreateWithOwner(ctx context.Context, conf *mo
 	}
 
 	return nil, nil
+}
+
+func (m *mockConferenceRepository) UpdateBySlug(ctx context.Context, slug string, conf *models.Conference) (*models.Conference, error) {
+	if m.updateBySlugFn != nil {
+		return m.updateBySlugFn(ctx, slug, conf)
+	}
+
+	return nil, nil
+}
+
+type mockConferenceOrganizerRepository struct {
+	isOrganizerForAnyConferenceFn func(ctx context.Context, userID int64) (bool, error)
+}
+
+func (m *mockConferenceOrganizerRepository) Add(context.Context, *models.ConferenceOrganizer) (*models.ConferenceOrganizer, error) {
+	panic("not implemented")
+}
+
+func (m *mockConferenceOrganizerRepository) GetByConferenceAndUser(context.Context, int64, int64) (*models.ConferenceOrganizer, error) {
+	panic("not implemented")
+}
+
+func (m *mockConferenceOrganizerRepository) RemoveByConferenceAndUser(context.Context, int64, int64) error {
+	panic("not implemented")
+}
+
+func (m *mockConferenceOrganizerRepository) IsOrganizer(context.Context, int64, int64) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockConferenceOrganizerRepository) IsOrganizerForAnyConference(ctx context.Context, userID int64) (bool, error) {
+	if m.isOrganizerForAnyConferenceFn != nil {
+		return m.isOrganizerForAnyConferenceFn(ctx, userID)
+	}
+
+	return true, nil
+}
+
+func newMockConferenceOrganizerRepository(isOrganizer bool) *mockConferenceOrganizerRepository {
+	return &mockConferenceOrganizerRepository{
+		isOrganizerForAnyConferenceFn: func(context.Context, int64) (bool, error) {
+			return isOrganizer, nil
+		},
+	}
 }
 
 func upcomingConference() *models.Conference {
@@ -99,7 +144,7 @@ func TestConferenceService_ListConferences_Success(t *testing.T) {
 			return []*models.Conference{upcomingConference(), pastConference()}, nil
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -116,7 +161,7 @@ func TestConferenceService_ListConferences_Empty(t *testing.T) {
 			return []*models.Conference{}, nil
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -131,7 +176,7 @@ func TestConferenceService_ListConferences_RepoError(t *testing.T) {
 			return nil, repoErr
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	_, err := svc.ListConferences(context.Background())
 	require.Error(t, err)
@@ -146,7 +191,7 @@ func TestConferenceService_GetConference_Success(t *testing.T) {
 			return conf, nil
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	result, err := svc.GetConference(context.Background(), "active-conf")
 	require.NoError(t, err)
@@ -161,7 +206,7 @@ func TestConferenceService_GetConference_NotFound(t *testing.T) {
 			return nil, repository.ErrConferenceNotFound
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	_, err := svc.GetConference(context.Background(), "nonexistent")
 	require.Error(t, err)
@@ -175,7 +220,7 @@ func TestConferenceService_GetConference_RepoError(t *testing.T) {
 			return nil, repoErr
 		},
 	}
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 
 	_, err := svc.GetConference(context.Background(), "some-slug")
 	require.Error(t, err)
@@ -249,7 +294,7 @@ func TestConferenceService_ListConferences_AttendeeCountFromBookings(t *testing.
 			return 5, nil
 		},
 	}
-	svc := NewConferenceService(repo, bookingRepo)
+	svc := NewConferenceService(repo, bookingRepo, newMockConferenceOrganizerRepository(true))
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -269,7 +314,7 @@ func TestConferenceService_GetConference_AttendeeCountFromBookings(t *testing.T)
 			return 3, nil
 		},
 	}
-	svc := NewConferenceService(repo, bookingRepo)
+	svc := NewConferenceService(repo, bookingRepo, newMockConferenceOrganizerRepository(true))
 
 	result, err := svc.GetConference(context.Background(), "active-conf")
 	require.NoError(t, err)
@@ -287,7 +332,7 @@ func TestConferenceService_ListConferences_BookingCountErrorDefaultsToZero(t *te
 			return 0, errors.New("booking count failure")
 		},
 	}
-	svc := NewConferenceService(repo, bookingRepo)
+	svc := NewConferenceService(repo, bookingRepo, newMockConferenceOrganizerRepository(true))
 
 	results, err := svc.ListConferences(context.Background())
 	require.NoError(t, err)
@@ -297,6 +342,9 @@ func TestConferenceService_ListConferences_BookingCountErrorDefaultsToZero(t *te
 
 func TestConferenceService_CreateConference_Success(t *testing.T) {
 	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{{ID: 1, Slug: "existing"}}, nil
+		},
 		createWithOwnerFn: func(_ context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error) {
 			assert.Equal(t, int64(77), ownerUserID)
 			assert.Equal(t, "new-conf", conf.Slug)
@@ -315,7 +363,7 @@ func TestConferenceService_CreateConference_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 	result, err := svc.CreateConference(context.Background(), 77, CreateConferenceInput{
 		Slug:        "new-conf",
 		Name:        "New Conf",
@@ -332,12 +380,15 @@ func TestConferenceService_CreateConference_Success(t *testing.T) {
 
 func TestConferenceService_CreateConference_DuplicateSlug(t *testing.T) {
 	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{{ID: 1, Slug: "existing"}}, nil
+		},
 		createWithOwnerFn: func(_ context.Context, _ *models.Conference, _ int64) (*models.Conference, error) {
 			return nil, repository.ErrConferenceExists
 		},
 	}
 
-	svc := NewConferenceService(repo, &mockBookingRepository{})
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
 	_, err := svc.CreateConference(context.Background(), 55, CreateConferenceInput{
 		Slug:      "dup",
 		Name:      "Duplicate",
@@ -348,4 +399,167 @@ func TestConferenceService_CreateConference_DuplicateSlug(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrConferenceExists)
+}
+
+func TestConferenceService_CreateConference_OrganizerRequired(t *testing.T) {
+	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{{ID: 1, Slug: "existing"}}, nil
+		},
+	}
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(false))
+
+	_, err := svc.CreateConference(context.Background(), 55, CreateConferenceInput{
+		Slug:      "restricted",
+		Name:      "Restricted",
+		Location:  "Paris",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  100,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrOrganizerForbidden)
+}
+
+func TestConferenceService_CreateConference_AllowsBootstrapWhenNoConferencesExist(t *testing.T) {
+	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{}, nil
+		},
+		createWithOwnerFn: func(_ context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error) {
+			assert.Equal(t, int64(99), ownerUserID)
+			assert.Equal(t, "bootstrap-conf", conf.Slug)
+			return &models.Conference{
+				ID:        321,
+				Slug:      conf.Slug,
+				Name:      conf.Name,
+				Location:  conf.Location,
+				StartDate: conf.StartDate,
+				EndDate:   conf.EndDate,
+				Capacity:  conf.Capacity,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(false))
+
+	result, err := svc.CreateConference(context.Background(), 99, CreateConferenceInput{
+		Slug:      "bootstrap-conf",
+		Name:      "Bootstrap",
+		Location:  "Berlin",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  50,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "bootstrap-conf", result.Slug)
+}
+
+func TestConferenceService_CreateConference_NormalizesSlug(t *testing.T) {
+	repo := &mockConferenceRepository{
+		createWithOwnerFn: func(_ context.Context, conf *models.Conference, _ int64) (*models.Conference, error) {
+			assert.Equal(t, "new-conf-2026", conf.Slug)
+			return &models.Conference{
+				ID:        9,
+				Slug:      conf.Slug,
+				Name:      conf.Name,
+				Location:  conf.Location,
+				StartDate: conf.StartDate,
+				EndDate:   conf.EndDate,
+				Capacity:  conf.Capacity,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(false))
+
+	created, err := svc.CreateConference(context.Background(), 44, CreateConferenceInput{
+		Slug:      "  New_Conf 2026  ",
+		Name:      "New Conf",
+		Location:  "Berlin",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "new-conf-2026", created.Slug)
+}
+
+func TestConferenceService_CreateConference_InvalidSlugRejected(t *testing.T) {
+	repo := &mockConferenceRepository{
+		listFn: func(_ context.Context) ([]*models.Conference, error) {
+			return []*models.Conference{}, nil
+		},
+	}
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(false))
+
+	_, err := svc.CreateConference(context.Background(), 44, CreateConferenceInput{
+		Slug:      "bad.slug",
+		Name:      "Bad Slug",
+		Location:  "Berlin",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  20,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidConferenceInput)
+}
+
+func TestConferenceService_UpdateConference_Success(t *testing.T) {
+	repo := &mockConferenceRepository{
+		updateBySlugFn: func(_ context.Context, slug string, conf *models.Conference) (*models.Conference, error) {
+			assert.Equal(t, "socrates-26", slug)
+			return &models.Conference{
+				ID:          77,
+				Slug:        "socrates-26",
+				Name:        conf.Name,
+				Description: conf.Description,
+				Location:    conf.Location,
+				StartDate:   conf.StartDate,
+				EndDate:     conf.EndDate,
+				Capacity:    conf.Capacity,
+				CreatedAt:   time.Now(),
+			}, nil
+		},
+	}
+	bookingRepo := &mockBookingRepository{
+		countByConferenceFn: func(_ context.Context, conferenceID int64) (int, error) {
+			assert.Equal(t, int64(77), conferenceID)
+			return 8, nil
+		},
+	}
+	svc := NewConferenceService(repo, bookingRepo, newMockConferenceOrganizerRepository(true))
+
+	updated, err := svc.UpdateConference(context.Background(), "socrates-26", UpdateConferenceInput{
+		Name:        "SoCraTes 2026 Updated",
+		Description: "updated",
+		Location:    "Berlin",
+		StartDate:   time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
+		EndDate:     time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		Capacity:    250,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "socrates-26", updated.Slug)
+	assert.Equal(t, 8, updated.AttendeeCount)
+}
+
+func TestConferenceService_UpdateConference_NotFound(t *testing.T) {
+	repo := &mockConferenceRepository{
+		updateBySlugFn: func(_ context.Context, _ string, _ *models.Conference) (*models.Conference, error) {
+			return nil, repository.ErrConferenceNotFound
+		},
+	}
+	svc := NewConferenceService(repo, &mockBookingRepository{}, newMockConferenceOrganizerRepository(true))
+
+	_, err := svc.UpdateConference(context.Background(), "missing", UpdateConferenceInput{
+		Name:      "Missing",
+		Location:  "Nowhere",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  10,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConferenceNotFound)
 }

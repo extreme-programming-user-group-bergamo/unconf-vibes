@@ -24,6 +24,7 @@ type ConferenceRepository interface {
 	Create(ctx context.Context, conf *models.Conference) (*models.Conference, error)
 	CreateWithOwner(ctx context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Conference, error)
+	UpdateBySlug(ctx context.Context, slug string, conf *models.Conference) (*models.Conference, error)
 	List(ctx context.Context) ([]*models.Conference, error)
 }
 
@@ -32,6 +33,7 @@ type ConferenceOrganizerRepository interface {
 	GetByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) (*models.ConferenceOrganizer, error)
 	RemoveByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) error
 	IsOrganizer(ctx context.Context, conferenceID int64, userID int64) (bool, error)
+	IsOrganizerForAnyConference(ctx context.Context, userID int64) (bool, error)
 }
 
 type RoomRepository interface {

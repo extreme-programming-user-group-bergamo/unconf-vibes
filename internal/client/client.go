@@ -29,6 +29,7 @@ var (
 	ErrRequestNotFound      = errors.New("roommate request not found")
 	ErrRequestForbidden     = errors.New("roommate request cannot be modified by current user")
 	ErrInvalidRequestState  = errors.New("roommate request is already resolved")
+	ErrOrganizerForbidden   = errors.New("organizer permissions required")
 )
 
 // DeviceFlowResponse represents the response from POST /auth/device.
@@ -220,6 +221,9 @@ var ErrUnauthorized = errors.New("unauthorized")
 // ErrConferenceNotFound is returned when the requested conference slug does not exist.
 var ErrConferenceNotFound = errors.New("conference not found")
 
+// ErrConferenceExists is returned when the conference slug already exists.
+var ErrConferenceExists = errors.New("conference already exists")
+
 // ConferenceResponse represents a conference returned by the API.
 type ConferenceResponse struct {
 	ID            int64  `json:"id"`
@@ -232,6 +236,25 @@ type ConferenceResponse struct {
 	Capacity      int    `json:"capacity"`
 	AttendeeCount int    `json:"attendee_count"`
 	Status        string `json:"status"`
+}
+
+type CreateConferenceRequest struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+	Capacity    int    `json:"capacity"`
+}
+
+type UpdateConferenceRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+	Capacity    int    `json:"capacity"`
 }
 
 // ListConferences fetches all conferences via GET /conferences.
@@ -279,6 +302,72 @@ func (c *Client) GetConference(ctx context.Context, slug string) (*ConferenceRes
 
 	if resp.IsError() {
 		return nil, fmt.Errorf("failed to get conference: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
+}
+
+// CreateConference creates a conference via POST /conferences.
+func (c *Client) CreateConference(ctx context.Context, accessToken string, input CreateConferenceRequest) (*ConferenceResponse, error) {
+	var result ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetBody(input).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Post("/conferences")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conference: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to create conference: %w", ErrUnauthorized)
+	}
+	if resp.StatusCode() == http.StatusForbidden {
+		return nil, fmt.Errorf("failed to create conference: %w", ErrOrganizerForbidden)
+	}
+	if resp.StatusCode() == http.StatusConflict {
+		return nil, fmt.Errorf("failed to create conference: %w", ErrConferenceExists)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to create conference: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
+}
+
+// UpdateConference updates conference details via PUT /conferences/{slug}.
+func (c *Client) UpdateConference(ctx context.Context, accessToken string, slug string, input UpdateConferenceRequest) (*ConferenceResponse, error) {
+	var result ConferenceResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetBody(input).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Put("/conferences/" + url.PathEscape(slug))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update conference: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to update conference: %w", ErrUnauthorized)
+	}
+	if resp.StatusCode() == http.StatusForbidden {
+		return nil, fmt.Errorf("failed to update conference: %w", ErrOrganizerForbidden)
+	}
+	if resp.StatusCode() == http.StatusNotFound {
+		return nil, fmt.Errorf("failed to update conference: %w", ErrConferenceNotFound)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to update conference: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
 	}
 
 	return &result, nil

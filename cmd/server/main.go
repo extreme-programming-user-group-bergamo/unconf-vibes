@@ -88,7 +88,7 @@ func main() {
 	bookingRepo := sqlite.NewBookingRepository(db)
 	requestRepo := sqlite.NewRoommateRequestRepository(db)
 
-	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
+	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo, organizerRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
 	organizerService := service.NewOrganizerService(conferenceRepo, organizerRepo, userRepository)
 	organizerHandler := handlers.NewOrganizerHandler(organizerService)

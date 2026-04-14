@@ -174,3 +174,43 @@ func TestOrganizerRepository_ConferenceDeleteCascadesMemberships(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, count)
 }
+
+func TestOrganizerRepository_IsOrganizerForAnyConference(t *testing.T) {
+	db := setupTestDB(t)
+	confRepo := NewConferenceRepository(db)
+	userRepo := NewUserRepository(db)
+	repo := NewOrganizerRepository(db)
+
+	conf, err := confRepo.Create(context.Background(), &models.Conference{
+		Slug:        "org-any",
+		Name:        "Org Any",
+		Description: "desc",
+		Location:    "City",
+		StartDate:   time.Now().Add(24 * time.Hour),
+		EndDate:     time.Now().Add(48 * time.Hour),
+		Capacity:    100,
+	})
+	require.NoError(t, err)
+
+	user, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:    "org-any-gh",
+		Email:       "org-any@test.com",
+		DisplayName: "Org Any User",
+	})
+	require.NoError(t, err)
+
+	ok, err := repo.IsOrganizerForAnyConference(context.Background(), user.ID)
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	_, err = repo.Add(context.Background(), &models.ConferenceOrganizer{
+		ConferenceID: conf.ID,
+		UserID:       user.ID,
+		Role:         models.ConferenceOrganizerRoleAdmin,
+	})
+	require.NoError(t, err)
+
+	ok, err = repo.IsOrganizerForAnyConference(context.Background(), user.ID)
+	require.NoError(t, err)
+	assert.True(t, ok)
+}

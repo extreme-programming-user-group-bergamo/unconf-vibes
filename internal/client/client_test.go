@@ -541,6 +541,70 @@ func TestGetConference_NetworkError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to get conference")
 }
 
+func TestCreateConference_Success(t *testing.T) {
+	input := CreateConferenceRequest{
+		Slug:        "new-conf",
+		Name:        "New Conf",
+		Description: "desc",
+		Location:    "Berlin",
+		StartDate:   "2026-10-07",
+		EndDate:     "2026-10-10",
+		Capacity:    100,
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/conferences", r.URL.Path)
+		assert.Equal(t, "Bearer token-123", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ConferenceResponse{
+			ID:            44,
+			Slug:          "new-conf",
+			Name:          "New Conf",
+			Description:   "desc",
+			Location:      "Berlin",
+			StartDate:     "2026-10-07",
+			EndDate:       "2026-10-10",
+			Capacity:      100,
+			AttendeeCount: 0,
+			Status:        "upcoming",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.CreateConference(context.Background(), "token-123", input)
+
+	require.NoError(t, err)
+	require.NotNil(t, conf)
+	assert.Equal(t, "new-conf", conf.Slug)
+}
+
+func TestUpdateConference_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "not_found",
+				"message": "Conference not found",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	conf, err := c.UpdateConference(context.Background(), "token-123", "missing", UpdateConferenceRequest{
+		Name:      "Updated",
+		Location:  "Berlin",
+		StartDate: "2026-10-07",
+		EndDate:   "2026-10-10",
+		Capacity:  100,
+	})
+	assert.Nil(t, conf)
+	assert.ErrorIs(t, err, ErrConferenceNotFound)
+}
+
 func TestUpdateMe_Success(t *testing.T) {
 	displayName := "New Name"
 	privacy := "private"

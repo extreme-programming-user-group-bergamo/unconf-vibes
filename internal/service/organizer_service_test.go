@@ -17,6 +17,7 @@ type mockOrganizerRepository struct {
 	getByConferenceAndUserFn    func(ctx context.Context, conferenceID int64, userID int64) (*models.ConferenceOrganizer, error)
 	removeByConferenceAndUserFn func(ctx context.Context, conferenceID int64, userID int64) error
 	isOrganizerFn               func(ctx context.Context, conferenceID int64, userID int64) (bool, error)
+	isAnyOrganizerFn            func(ctx context.Context, userID int64) (bool, error)
 }
 
 func (m *mockOrganizerRepository) Add(ctx context.Context, organizer *models.ConferenceOrganizer) (*models.ConferenceOrganizer, error) {
@@ -43,6 +44,13 @@ func (m *mockOrganizerRepository) RemoveByConferenceAndUser(ctx context.Context,
 func (m *mockOrganizerRepository) IsOrganizer(ctx context.Context, conferenceID int64, userID int64) (bool, error) {
 	if m.isOrganizerFn != nil {
 		return m.isOrganizerFn(ctx, conferenceID, userID)
+	}
+	return false, nil
+}
+
+func (m *mockOrganizerRepository) IsOrganizerForAnyConference(ctx context.Context, userID int64) (bool, error) {
+	if m.isAnyOrganizerFn != nil {
+		return m.isAnyOrganizerFn(ctx, userID)
 	}
 	return false, nil
 }

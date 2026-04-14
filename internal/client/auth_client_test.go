@@ -784,3 +784,47 @@ func TestAuthenticatedClient_DeclineRoommateRequest_AutoRefresh(t *testing.T) {
 	assert.Equal(t, "declined", resp.Status)
 	assert.Equal(t, int32(2), callCount.Load())
 }
+
+func TestAuthenticatedClient_CreateConference_AutoRefresh(t *testing.T) {
+	var createCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/conferences":
+			n := createCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{"code": "unauthorized", "message": "token expired"},
+				})
+				return
+			}
+			assert.Equal(t, "Bearer refreshed-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(ConferenceResponse{
+				ID: 10, Slug: "new-conf", Name: "New Conf", StartDate: "2026-10-07", EndDate: "2026-10-10", Capacity: 100,
+			})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "refreshed-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-token", "refresh-token")
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+
+	result, err := ac.CreateConference(context.Background(), CreateConferenceRequest{
+		Slug: "new-conf", Name: "New Conf", Location: "Berlin", StartDate: "2026-10-07", EndDate: "2026-10-10", Capacity: 100,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "new-conf", result.Slug)
+	assert.Equal(t, int32(2), createCallCount.Load())
+}

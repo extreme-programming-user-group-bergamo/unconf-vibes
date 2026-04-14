@@ -341,6 +341,72 @@ func (ac *AuthenticatedClient) ListAttendees(ctx context.Context, slug string) (
 	return retryAttendees, nil
 }
 
+// CreateConference creates a conference, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) CreateConference(ctx context.Context, input CreateConferenceRequest) (*ConferenceResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "CreateConference")
+
+	conference, err := ac.client.CreateConference(ctx, accessToken, input)
+	if err == nil {
+		return conference, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "CreateConference")
+
+	retryConference, retryErr := ac.client.CreateConference(ctx, newAccessToken, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to create conference after token refresh: %w", retryErr)
+	}
+
+	return retryConference, nil
+}
+
+// UpdateConference updates a conference, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) UpdateConference(ctx context.Context, slug string, input UpdateConferenceRequest) (*ConferenceResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "UpdateConference")
+
+	conference, err := ac.client.UpdateConference(ctx, accessToken, slug, input)
+	if err == nil {
+		return conference, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "UpdateConference")
+
+	retryConference, retryErr := ac.client.UpdateConference(ctx, newAccessToken, slug, input)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to update conference after token refresh: %w", retryErr)
+	}
+
+	return retryConference, nil
+}
+
 // tryRefresh attempts to refresh the access token using the stored refresh token.
 // On success, it saves new tokens and returns the new access token.
 // On failure, it clears all tokens and returns ErrSessionExpired.

@@ -62,6 +62,14 @@ func NewRouter(
 
 		if confHandler != nil {
 			protected.POST("/conferences", confHandler.Create)
+
+			if organizerChecker != nil {
+				organizerConferenceRoutes := protected.Group("/conferences/:slug")
+				organizerConferenceRoutes.Use(middleware.RequireOrganizer(organizerChecker))
+				organizerConferenceRoutes.PUT("", confHandler.Update)
+			} else {
+				protected.PUT("/conferences/:slug", confHandler.Update)
+			}
 		}
 
 		if organizerHandler != nil {

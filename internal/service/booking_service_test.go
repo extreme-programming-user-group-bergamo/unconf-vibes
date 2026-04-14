@@ -67,6 +67,9 @@ func (m *mockBookingServiceConferenceRepo) CreateWithOwner(context.Context, *mod
 func (m *mockBookingServiceConferenceRepo) GetBySlug(context.Context, string) (*models.Conference, error) {
 	panic("not implemented")
 }
+func (m *mockBookingServiceConferenceRepo) UpdateBySlug(context.Context, string, *models.Conference) (*models.Conference, error) {
+	panic("not implemented")
+}
 func (m *mockBookingServiceConferenceRepo) List(ctx context.Context) ([]*models.Conference, error) {
 	return m.listFn(ctx)
 }

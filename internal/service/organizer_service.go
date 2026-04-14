@@ -45,6 +45,15 @@ func (s *OrganizerService) IsOrganizerForConference(ctx context.Context, slug st
 	return isOrganizer, nil
 }
 
+func (s *OrganizerService) IsOrganizer(ctx context.Context, userID int64) (bool, error) {
+	isOrganizer, err := s.organizerRepo.IsOrganizerForAnyConference(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check organizer role: %w", err)
+	}
+
+	return isOrganizer, nil
+}
+
 func (s *OrganizerService) IsOwnerForConference(ctx context.Context, slug string, userID int64) (bool, error) {
 	conf, err := s.confRepo.GetBySlug(ctx, slug)
 	if err != nil {

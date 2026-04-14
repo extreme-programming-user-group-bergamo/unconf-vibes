@@ -138,3 +138,40 @@ func TestConferenceRepository_CreateWithOwner_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.ConferenceOrganizerRoleOwner, membership.Role)
 }
+
+func TestConferenceRepository_UpdateBySlug_Success(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewConferenceRepository(db)
+
+	_, err := repo.Create(context.Background(), newTestConference("update-me"))
+	require.NoError(t, err)
+
+	updated, err := repo.UpdateBySlug(context.Background(), "update-me", &models.Conference{
+		Name:        "Updated Name",
+		Description: "Updated Description",
+		Location:    "Updated City",
+		StartDate:   time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC),
+		EndDate:     time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC),
+		Capacity:    300,
+		HotelEmail:  "updated@test.com",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "update-me", updated.Slug)
+	assert.Equal(t, "Updated Name", updated.Name)
+	assert.Equal(t, 300, updated.Capacity)
+}
+
+func TestConferenceRepository_UpdateBySlug_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewConferenceRepository(db)
+
+	_, err := repo.UpdateBySlug(context.Background(), "missing", &models.Conference{
+		Name:      "Missing",
+		Location:  "Nowhere",
+		StartDate: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC),
+		Capacity:  1,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrConferenceNotFound)
+}

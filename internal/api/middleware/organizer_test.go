@@ -15,6 +15,7 @@ import (
 type mockOrganizerPermissionChecker struct {
 	isOrganizerFn func(ctx context.Context, slug string, userID int64) (bool, error)
 	isOwnerFn     func(ctx context.Context, slug string, userID int64) (bool, error)
+	isAnyFn       func(ctx context.Context, userID int64) (bool, error)
 }
 
 func (m *mockOrganizerPermissionChecker) IsOrganizerForConference(ctx context.Context, slug string, userID int64) (bool, error) {
@@ -27,6 +28,13 @@ func (m *mockOrganizerPermissionChecker) IsOrganizerForConference(ctx context.Co
 func (m *mockOrganizerPermissionChecker) IsOwnerForConference(ctx context.Context, slug string, userID int64) (bool, error) {
 	if m.isOwnerFn != nil {
 		return m.isOwnerFn(ctx, slug, userID)
+	}
+	return false, nil
+}
+
+func (m *mockOrganizerPermissionChecker) IsOrganizer(ctx context.Context, userID int64) (bool, error) {
+	if m.isAnyFn != nil {
+		return m.isAnyFn(ctx, userID)
 	}
 	return false, nil
 }
@@ -115,4 +123,48 @@ func TestRequireOrganizerOwner_InternalError(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestRequireAnyOrganizer_ForbiddenForNonOrganizer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(13))
+		c.Next()
+	})
+	router.POST("/conferences", RequireAnyOrganizer(&mockOrganizerPermissionChecker{
+		isAnyFn: func(_ context.Context, _ int64) (bool, error) {
+			return false, nil
+		},
+	}), func(c *gin.Context) {
+		c.Status(http.StatusCreated)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/conferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireAnyOrganizer_AllowsOrganizer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(14))
+		c.Next()
+	})
+	router.POST("/conferences", RequireAnyOrganizer(&mockOrganizerPermissionChecker{
+		isAnyFn: func(_ context.Context, _ int64) (bool, error) {
+			return true, nil
+		},
+	}), func(c *gin.Context) {
+		c.Status(http.StatusCreated)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/conferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
 }
