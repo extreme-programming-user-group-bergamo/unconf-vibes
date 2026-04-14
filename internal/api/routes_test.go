@@ -55,14 +55,17 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	userHandler := handlers.NewUserHandler(userService)
 
 	conferenceRepo := sqlite.NewConferenceRepository(db)
+	organizerRepo := sqlite.NewOrganizerRepository(db)
 	bookingRepo := sqlite.NewBookingRepository(db)
 	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
+	organizerService := service.NewOrganizerService(conferenceRepo, organizerRepo, userRepo)
+	organizerHandler := handlers.NewOrganizerHandler(organizerService)
 
 	roomRepo := sqlite.NewRoomRepository(db)
 	roomService := service.NewRoomService(roomRepo, bookingRepo, conferenceRepo, userRepo)
 	roomHandler := handlers.NewRoomHandler(roomService)
-	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepo)
+	attendeeService := service.NewAttendeeService(conferenceRepo, organizerRepo, bookingRepo, roomRepo, userRepo)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
 	requestRepo := sqlite.NewRoommateRequestRepository(db)
 	bookingService := service.NewBookingService(bookingRepo, roomRepo, conferenceRepo, userRepo)
@@ -70,7 +73,7 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepo)
 	requestHandler := handlers.NewRequestHandler(requestService)
 
-	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, bookingHandler, requestHandler)
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, organizerHandler, organizerService, roomHandler, attendeeHandler, bookingHandler, requestHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -390,6 +393,18 @@ func createTestConference(t *testing.T, db *sql.DB, slug, name string, startDate
 		StartDate:   startDate,
 		EndDate:     endDate,
 		Capacity:    100,
+	})
+	require.NoError(t, err)
+}
+
+func createTestOrganizer(t *testing.T, db *sql.DB, conferenceID int64, userID int64, role models.ConferenceOrganizerRole) {
+	t.Helper()
+
+	repo := sqlite.NewOrganizerRepository(db)
+	_, err := repo.Add(context.Background(), &models.ConferenceOrganizer{
+		ConferenceID: conferenceID,
+		UserID:       userID,
+		Role:         role,
 	})
 	require.NoError(t, err)
 }
@@ -801,6 +816,7 @@ func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
 	privateUser := createTestUserWithName(t, db, "gh-private", "private@test.com", "Private Bob", "private")
 	authUser := createTestUser(t, db)
 	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
+	createTestOrganizer(t, db, conf.ID, authUser.ID, models.ConferenceOrganizerRoleAdmin)
 
 	createTestBooking(t, db, room.ID, publicUser.ID, conf.ID, models.BookingStatusConfirmed, "public")
 	createTestBooking(t, db, room.ID, privateUser.ID, conf.ID, models.BookingStatusConfirmed, "private")
@@ -815,15 +831,64 @@ func TestGetAttendees_ReturnsPublicRowsAndPrivateCount(t *testing.T) {
 
 	var body map[string]interface{}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	assert.Equal(t, float64(1), body["private_attendees_count"])
+	assert.Equal(t, float64(0), body["private_attendees_count"])
 
+	attendees := body["attendees"].([]interface{})
+	require.Len(t, attendees, 2)
+	row := attendees[0].(map[string]interface{})
+	roomInfo := row["room"].(map[string]interface{})
+	assert.Equal(t, "601", roomInfo["room_number"])
+}
+
+func TestGetAttendees_OrganizerSeesPrivateRows(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-attendees-organizer", "Attendees Organizer",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-attendees-organizer")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "602", "double", 120.0, 2)
+	privateUser := createTestUserWithName(t, db, "gh-private-visible", "private-visible@test.com", "Private Visible", "private")
+	authUser := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
+	createTestOrganizer(t, db, conf.ID, authUser.ID, models.ConferenceOrganizerRoleAdmin)
+
+	createTestBooking(t, db, room.ID, privateUser.ID, conf.ID, models.BookingStatusConfirmed, "private")
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-attendees-organizer/attendees", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, float64(0), body["private_attendees_count"])
 	attendees := body["attendees"].([]interface{})
 	require.Len(t, attendees, 1)
 	row := attendees[0].(map[string]interface{})
-	assert.Equal(t, "Public Alice", row["display_name"])
+	assert.Equal(t, "Private Visible", row["display_name"])
+}
 
-	roomInfo := row["room"].(map[string]interface{})
-	assert.Equal(t, "601", roomInfo["room_number"])
+func TestGetAttendees_NonOrganizer_Returns403(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-attendees-403", "Attendees 403",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	authUser := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, authUser.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-attendees-403/attendees", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestGetAttendees_ConferenceNotFound(t *testing.T) {
@@ -838,6 +903,99 @@ func TestGetAttendees_ConferenceNotFound(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestPostConferences_CreatesConferenceAndOwner(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	reqBody := `{"slug":"conf-create-owner","name":"Create Owner","description":"desc","location":"Berlin","start_date":"2026-10-07","end_date":"2026-10-10","capacity":120}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	confRepo := sqlite.NewConferenceRepository(db)
+	createdConf, err := confRepo.GetBySlug(context.Background(), "conf-create-owner")
+	require.NoError(t, err)
+
+	organizerRepo := sqlite.NewOrganizerRepository(db)
+	membership, err := organizerRepo.GetByConferenceAndUser(context.Background(), createdConf.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.ConferenceOrganizerRoleOwner, membership.Role)
+}
+
+func TestPostConferenceOrganizers_OwnerCanAdd(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-org-add", "Org Add",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-org-add")
+	require.NoError(t, err)
+
+	owner := createTestUserWithName(t, db, "gh-owner-add", "owner-add@test.com", "Owner Add", "public")
+	target := createTestUserWithName(t, db, "gh-target-add", "target-add@test.com", "Target Add", "public")
+	createTestOrganizer(t, db, conf.ID, owner.ID, models.ConferenceOrganizerRoleOwner)
+	accessToken, _ := createTestSession(t, db, owner.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences/conf-org-add/organizers", strings.NewReader(`{"user_id":`+jsonNumber(target.ID)+`,"role":"admin"}`))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestDeleteConferenceOrganizers_OwnerCanRemove(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-org-remove", "Org Remove",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-org-remove")
+	require.NoError(t, err)
+
+	owner := createTestUserWithName(t, db, "gh-owner-remove", "owner-remove@test.com", "Owner Remove", "public")
+	target := createTestUserWithName(t, db, "gh-target-remove", "target-remove@test.com", "Target Remove", "public")
+	createTestOrganizer(t, db, conf.ID, owner.ID, models.ConferenceOrganizerRoleOwner)
+	createTestOrganizer(t, db, conf.ID, target.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, owner.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/conferences/conf-org-remove/organizers/"+jsonNumber(target.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestPostConferenceOrganizers_AdminForbidden(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-org-admin", "Org Admin",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-org-admin")
+	require.NoError(t, err)
+
+	admin := createTestUserWithName(t, db, "gh-admin-forbid", "admin-forbid@test.com", "Admin Forbid", "public")
+	target := createTestUserWithName(t, db, "gh-target-forbid", "target-forbid@test.com", "Target Forbid", "public")
+	createTestOrganizer(t, db, conf.ID, admin.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, admin.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/conferences/conf-org-admin/organizers", strings.NewReader(`{"user_id":`+jsonNumber(target.ID)+`,"role":"admin"}`))
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func createTestRoommateRequest(t *testing.T, db *sql.DB, requesterID, targetID, roomID int64) *models.RoommateRequest {

@@ -61,6 +61,9 @@ type mockBookingServiceConferenceRepo struct {
 func (m *mockBookingServiceConferenceRepo) Create(context.Context, *models.Conference) (*models.Conference, error) {
 	panic("not implemented")
 }
+func (m *mockBookingServiceConferenceRepo) CreateWithOwner(context.Context, *models.Conference, int64) (*models.Conference, error) {
+	panic("not implemented")
+}
 func (m *mockBookingServiceConferenceRepo) GetBySlug(context.Context, string) (*models.Conference, error) {
 	panic("not implemented")
 }

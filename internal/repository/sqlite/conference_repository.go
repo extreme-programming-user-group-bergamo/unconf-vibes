@@ -25,26 +25,60 @@ func (r *ConferenceRepository) Create(ctx context.Context, conf *models.Conferen
 		return nil, fmt.Errorf("failed to create conference: conference is nil")
 	}
 
-	query := `
-		INSERT INTO conferences (slug, name, description, location, start_date, end_date, capacity, hotel_email)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, slug, name, description, location, start_date, end_date, capacity, hotel_email, created_at
-	`
-
-	created, err := scanConference(r.db.QueryRowContext(ctx, query,
-		conf.Slug, conf.Name, conf.Description, conf.Location,
-		conf.StartDate, conf.EndDate,
-		conf.Capacity, conf.HotelEmail,
-	))
+	created, err := createConference(ctx, r.db, conf)
 	if err != nil {
-		if isConferenceUniqueConstraintError(err) {
-			return nil, repository.ErrConferenceExists
-		}
-
 		return nil, fmt.Errorf("failed to create conference: %w", err)
 	}
 
 	slog.Debug("conference created", "conference_id", created.ID, "slug", created.Slug)
+	return created, nil
+}
+
+func (r *ConferenceRepository) CreateWithOwner(ctx context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error) {
+	if conf == nil {
+		return nil, fmt.Errorf("failed to create conference with owner: conference is nil")
+	}
+	if ownerUserID <= 0 {
+		return nil, fmt.Errorf("failed to create conference with owner: invalid owner user id")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conference with owner: %w", err)
+	}
+
+	rolledBack := false
+	rollback := func() {
+		if rolledBack {
+			return
+		}
+		_ = tx.Rollback()
+		rolledBack = true
+	}
+	defer rollback()
+
+	created, err := createConference(ctx, tx, conf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conference with owner: %w", err)
+	}
+
+	addOwnerQuery := `
+		INSERT INTO conference_organizers (conference_id, user_id, role)
+		VALUES (?, ?, ?)
+	`
+	if _, err := tx.ExecContext(ctx, addOwnerQuery, created.ID, ownerUserID, models.ConferenceOrganizerRoleOwner); err != nil {
+		if isConferenceOrganizerUniqueConstraintError(err) {
+			return nil, fmt.Errorf("failed to create conference with owner: %w", repository.ErrConferenceOrganizerExists)
+		}
+		return nil, fmt.Errorf("failed to create conference with owner: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to create conference with owner: %w", err)
+	}
+	rolledBack = true
+
+	slog.Debug("conference created with owner", "conference_id", created.ID, "owner_user_id", ownerUserID)
 	return created, nil
 }
 
@@ -131,6 +165,32 @@ func scanConference(s scanner) (*models.Conference, error) {
 
 func isConferenceUniqueConstraintError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed: conferences.slug")
+}
+
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func createConference(ctx context.Context, q queryRower, conf *models.Conference) (*models.Conference, error) {
+	query := `
+		INSERT INTO conferences (slug, name, description, location, start_date, end_date, capacity, hotel_email)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, slug, name, description, location, start_date, end_date, capacity, hotel_email, created_at
+	`
+
+	created, err := scanConference(q.QueryRowContext(ctx, query,
+		conf.Slug, conf.Name, conf.Description, conf.Location,
+		conf.StartDate, conf.EndDate,
+		conf.Capacity, conf.HotelEmail,
+	))
+	if err != nil {
+		if isConferenceUniqueConstraintError(err) {
+			return nil, repository.ErrConferenceExists
+		}
+		return nil, err
+	}
+
+	return created, nil
 }
 
 var _ repository.ConferenceRepository = (*ConferenceRepository)(nil)

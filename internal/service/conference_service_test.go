@@ -13,9 +13,10 @@ import (
 )
 
 type mockConferenceRepository struct {
-	listFn      func(ctx context.Context) ([]*models.Conference, error)
-	getBySlugFn func(ctx context.Context, slug string) (*models.Conference, error)
-	createFn    func(ctx context.Context, conf *models.Conference) (*models.Conference, error)
+	listFn            func(ctx context.Context) ([]*models.Conference, error)
+	getBySlugFn       func(ctx context.Context, slug string) (*models.Conference, error)
+	createFn          func(ctx context.Context, conf *models.Conference) (*models.Conference, error)
+	createWithOwnerFn func(ctx context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error)
 }
 
 func (m *mockConferenceRepository) List(ctx context.Context) ([]*models.Conference, error) {
@@ -37,6 +38,14 @@ func (m *mockConferenceRepository) GetBySlug(ctx context.Context, slug string) (
 func (m *mockConferenceRepository) Create(ctx context.Context, conf *models.Conference) (*models.Conference, error) {
 	if m.createFn != nil {
 		return m.createFn(ctx, conf)
+	}
+
+	return nil, nil
+}
+
+func (m *mockConferenceRepository) CreateWithOwner(ctx context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error) {
+	if m.createWithOwnerFn != nil {
+		return m.createWithOwnerFn(ctx, conf, ownerUserID)
 	}
 
 	return nil, nil
@@ -284,4 +293,59 @@ func TestConferenceService_ListConferences_BookingCountErrorDefaultsToZero(t *te
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, 0, results[0].AttendeeCount)
+}
+
+func TestConferenceService_CreateConference_Success(t *testing.T) {
+	repo := &mockConferenceRepository{
+		createWithOwnerFn: func(_ context.Context, conf *models.Conference, ownerUserID int64) (*models.Conference, error) {
+			assert.Equal(t, int64(77), ownerUserID)
+			assert.Equal(t, "new-conf", conf.Slug)
+			return &models.Conference{
+				ID:          123,
+				Slug:        conf.Slug,
+				Name:        conf.Name,
+				Description: conf.Description,
+				Location:    conf.Location,
+				StartDate:   conf.StartDate,
+				EndDate:     conf.EndDate,
+				Capacity:    conf.Capacity,
+				HotelEmail:  conf.HotelEmail,
+				CreatedAt:   time.Now(),
+			}, nil
+		},
+	}
+
+	svc := NewConferenceService(repo, &mockBookingRepository{})
+	result, err := svc.CreateConference(context.Background(), 77, CreateConferenceInput{
+		Slug:        "new-conf",
+		Name:        "New Conf",
+		Description: "desc",
+		Location:    "Berlin",
+		StartDate:   time.Now().Add(24 * time.Hour),
+		EndDate:     time.Now().Add(48 * time.Hour),
+		Capacity:    100,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "new-conf", result.Slug)
+}
+
+func TestConferenceService_CreateConference_DuplicateSlug(t *testing.T) {
+	repo := &mockConferenceRepository{
+		createWithOwnerFn: func(_ context.Context, _ *models.Conference, _ int64) (*models.Conference, error) {
+			return nil, repository.ErrConferenceExists
+		},
+	}
+
+	svc := NewConferenceService(repo, &mockBookingRepository{})
+	_, err := svc.CreateConference(context.Background(), 55, CreateConferenceInput{
+		Slug:      "dup",
+		Name:      "Duplicate",
+		Location:  "Paris",
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		Capacity:  100,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConferenceExists)
 }

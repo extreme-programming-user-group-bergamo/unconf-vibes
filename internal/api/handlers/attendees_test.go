@@ -13,12 +13,12 @@ import (
 )
 
 type mockAttendeeService struct {
-	listAttendeesFn func(ctx context.Context, slug string) (*service.AttendeeListResponse, error)
+	listAttendeesFn func(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error)
 }
 
-func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string) (*service.AttendeeListResponse, error) {
+func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error) {
 	if m.listAttendeesFn != nil {
-		return m.listAttendeesFn(ctx, slug)
+		return m.listAttendeesFn(ctx, slug, requesterUserID)
 	}
 
 	return &service.AttendeeListResponse{}, nil
@@ -27,14 +27,19 @@ func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string) (*
 func setupAttendeeRouter(handler *AttendeeHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		c.Next()
+	})
 	router.GET("/conferences/:slug/attendees", handler.ListByConference)
 	return router
 }
 
 func TestAttendeeHandler_ListByConference_Success(t *testing.T) {
 	handler := NewAttendeeHandler(&mockAttendeeService{
-		listAttendeesFn: func(_ context.Context, slug string) (*service.AttendeeListResponse, error) {
+		listAttendeesFn: func(_ context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error) {
 			assert.Equal(t, "socrates-26", slug)
+			assert.Equal(t, int64(42), requesterUserID)
 			return &service.AttendeeListResponse{
 				Attendees: []service.AttendeeResponse{
 					{
@@ -64,7 +69,7 @@ func TestAttendeeHandler_ListByConference_Success(t *testing.T) {
 
 func TestAttendeeHandler_ListByConference_ConferenceNotFound(t *testing.T) {
 	handler := NewAttendeeHandler(&mockAttendeeService{
-		listAttendeesFn: func(_ context.Context, _ string) (*service.AttendeeListResponse, error) {
+		listAttendeesFn: func(_ context.Context, _ string, _ int64) (*service.AttendeeListResponse, error) {
 			return nil, service.ErrConferenceNotFound
 		},
 	})
@@ -81,7 +86,7 @@ func TestAttendeeHandler_ListByConference_ConferenceNotFound(t *testing.T) {
 
 func TestAttendeeHandler_ListByConference_ServiceError(t *testing.T) {
 	handler := NewAttendeeHandler(&mockAttendeeService{
-		listAttendeesFn: func(_ context.Context, _ string) (*service.AttendeeListResponse, error) {
+		listAttendeesFn: func(_ context.Context, _ string, _ int64) (*service.AttendeeListResponse, error) {
 			return nil, errors.New("db error")
 		},
 	})

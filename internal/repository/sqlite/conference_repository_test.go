@@ -116,3 +116,25 @@ func TestConferenceRepository_List_EmptyDatabase(t *testing.T) {
 	require.NotNil(t, list)
 	assert.Empty(t, list)
 }
+
+func TestConferenceRepository_CreateWithOwner_Success(t *testing.T) {
+	db := setupTestDB(t)
+	userRepo := NewUserRepository(db)
+	confRepo := NewConferenceRepository(db)
+	organizerRepo := NewOrganizerRepository(db)
+
+	owner, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:    "owner-gh",
+		Email:       "owner@test.com",
+		DisplayName: "Owner User",
+	})
+	require.NoError(t, err)
+
+	created, err := confRepo.CreateWithOwner(context.Background(), newTestConference("with-owner"), owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	membership, err := organizerRepo.GetByConferenceAndUser(context.Background(), created.ID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.ConferenceOrganizerRoleOwner, membership.Role)
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/katurdays/unconf/internal/models"
@@ -23,6 +24,17 @@ type ConferenceResponse struct {
 	Capacity      int    `json:"capacity"`
 	AttendeeCount int    `json:"attendee_count"`
 	Status        string `json:"status"`
+}
+
+type CreateConferenceInput struct {
+	Slug        string
+	Name        string
+	Description string
+	Location    string
+	StartDate   time.Time
+	EndDate     time.Time
+	Capacity    int
+	HotelEmail  string
 }
 
 // ConferenceService handles conference business logic.
@@ -75,6 +87,41 @@ func (s *ConferenceService) GetConference(ctx context.Context, slug string) (*Co
 	}
 
 	return toResponseAt(conf, time.Now(), attendeeCount), nil
+}
+
+// CreateConference creates a conference and assigns the creator as organizer owner.
+func (s *ConferenceService) CreateConference(ctx context.Context, creatorUserID int64, input CreateConferenceInput) (*ConferenceResponse, error) {
+	if creatorUserID <= 0 {
+		return nil, fmt.Errorf("failed to create conference: invalid creator user id")
+	}
+	if strings.TrimSpace(input.Slug) == "" || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Location) == "" {
+		return nil, fmt.Errorf("failed to create conference: missing required fields")
+	}
+	if input.Capacity <= 0 {
+		return nil, fmt.Errorf("failed to create conference: capacity must be positive")
+	}
+	if truncateToDate(input.EndDate).Before(truncateToDate(input.StartDate)) {
+		return nil, fmt.Errorf("failed to create conference: end date cannot be before start date")
+	}
+
+	created, err := s.confRepo.CreateWithOwner(ctx, &models.Conference{
+		Slug:        strings.TrimSpace(input.Slug),
+		Name:        strings.TrimSpace(input.Name),
+		Description: strings.TrimSpace(input.Description),
+		Location:    strings.TrimSpace(input.Location),
+		StartDate:   input.StartDate,
+		EndDate:     input.EndDate,
+		Capacity:    input.Capacity,
+		HotelEmail:  strings.TrimSpace(input.HotelEmail),
+	}, creatorUserID)
+	if err != nil {
+		if errors.Is(err, repository.ErrConferenceExists) {
+			return nil, fmt.Errorf("failed to create conference: %w", ErrConferenceExists)
+		}
+		return nil, fmt.Errorf("failed to create conference: %w", err)
+	}
+
+	return toResponseAt(created, time.Now(), 0), nil
 }
 
 // DeriveStatus computes the conference status from its dates using the current time.

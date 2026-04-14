@@ -26,6 +26,20 @@ func TestNewConnectionManager_AppliesPoolSettingsFromConfig(t *testing.T) {
 	assert.Equal(t, 7, stats.MaxOpenConnections)
 }
 
+func TestNewConnectionManager_EnforcesForeignKeys(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "fk.db")
+	db, err := NewConnectionManager(context.Background(), dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	var enabled int
+	err = db.QueryRowContext(context.Background(), "PRAGMA foreign_keys").Scan(&enabled)
+	require.NoError(t, err)
+	assert.Equal(t, 1, enabled)
+}
+
 func TestWithBusyTimeout(t *testing.T) {
 	assert.Equal(t, "test.db?_busy_timeout=5000", withBusyTimeout("test.db", 5000))
 	assert.Equal(t, "test.db?cache=shared&_busy_timeout=5000", withBusyTimeout("test.db?cache=shared", 5000))

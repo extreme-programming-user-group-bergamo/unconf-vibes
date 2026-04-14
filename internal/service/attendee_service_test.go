@@ -22,6 +22,13 @@ func TestAttendeeService_ListAttendees_Success(t *testing.T) {
 				return conf, nil
 			},
 		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, conferenceID int64, userID int64) (bool, error) {
+				assert.Equal(t, conf.ID, conferenceID)
+				assert.Equal(t, int64(50), userID)
+				return false, nil
+			},
+		},
 		&mockBookingRepository{
 			listByConferenceFn: func(_ context.Context, conferenceID int64) ([]*models.Booking, error) {
 				assert.Equal(t, conf.ID, conferenceID)
@@ -49,7 +56,7 @@ func TestAttendeeService_ListAttendees_Success(t *testing.T) {
 		},
 	)
 
-	result, err := svc.ListAttendees(context.Background(), "socrates-26")
+	result, err := svc.ListAttendees(context.Background(), "socrates-26", 50)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Attendees, 1)
@@ -68,6 +75,11 @@ func TestAttendeeService_ListAttendees_PrivateCountsOnly(t *testing.T) {
 		&mockConferenceRepository{
 			getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) {
 				return conf, nil
+			},
+		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, _ int64, _ int64) (bool, error) {
+				return false, nil
 			},
 		},
 		&mockBookingRepository{
@@ -98,7 +110,7 @@ func TestAttendeeService_ListAttendees_PrivateCountsOnly(t *testing.T) {
 		},
 	)
 
-	result, err := svc.ListAttendees(context.Background(), "socrates-26")
+	result, err := svc.ListAttendees(context.Background(), "socrates-26", 50)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Empty(t, result.Attendees)
@@ -112,12 +124,13 @@ func TestAttendeeService_ListAttendees_ConferenceNotFound(t *testing.T) {
 				return nil, repository.ErrConferenceNotFound
 			},
 		},
+		&mockOrganizerRepository{},
 		&mockBookingRepository{},
 		&mockRoomRepository{},
 		&mockUserRepository{},
 	)
 
-	_, err := svc.ListAttendees(context.Background(), "missing-conf")
+	_, err := svc.ListAttendees(context.Background(), "missing-conf", 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrConferenceNotFound)
 }
@@ -132,6 +145,7 @@ func TestAttendeeService_ListAttendees_BookingRepoError(t *testing.T) {
 				return conf, nil
 			},
 		},
+		&mockOrganizerRepository{},
 		&mockBookingRepository{
 			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
 				return nil, repoErr
@@ -141,7 +155,53 @@ func TestAttendeeService_ListAttendees_BookingRepoError(t *testing.T) {
 		&mockUserRepository{},
 	)
 
-	_, err := svc.ListAttendees(context.Background(), "socrates-26")
+	_, err := svc.ListAttendees(context.Background(), "socrates-26", 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, repoErr)
+}
+
+func TestAttendeeService_ListAttendees_OrganizerSeesPrivateDetails(t *testing.T) {
+	conf := testConference()
+	room := testRoom(1, conf.ID, "101", 2)
+
+	svc := NewAttendeeService(
+		&mockConferenceRepository{
+			getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) {
+				return conf, nil
+			},
+		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, _ int64, _ int64) (bool, error) {
+				return true, nil
+			},
+		},
+		&mockBookingRepository{
+			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{
+					testBooking(1, room.ID, 10, conf.ID, "private"),
+				}, nil
+			},
+		},
+		&mockRoomRepository{
+			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Room, error) {
+				return []*models.Room{room}, nil
+			},
+		},
+		&mockUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{
+					ID:             id,
+					GitHubID:       "secret-user",
+					DisplayName:    "Secret User",
+					PrivacySetting: "private",
+				}, nil
+			},
+		},
+	)
+
+	result, err := svc.ListAttendees(context.Background(), "socrates-26", 99)
+	require.NoError(t, err)
+	require.Len(t, result.Attendees, 1)
+	assert.Equal(t, "Secret User", result.Attendees[0].DisplayName)
+	assert.Equal(t, 0, result.PrivateAttendeesCount)
 }

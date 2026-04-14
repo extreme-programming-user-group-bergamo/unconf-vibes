@@ -18,6 +18,7 @@ var (
 	ErrSessionNotFound       = errors.New("session not found")
 	ErrInvalidPrivacySetting = errors.New("invalid privacy setting: must be public, private, or connections_only")
 	ErrConferenceNotFound    = errors.New("conference not found")
+	ErrConferenceExists      = errors.New("conference already exists")
 	ErrRoomNotFound          = errors.New("room not found")
 	ErrRoomFull              = errors.New("room is full")
 	ErrBookingNotFound       = errors.New("booking not found")
@@ -30,6 +31,10 @@ var (
 	ErrDuplicateRequest      = errors.New("duplicate roommate request")
 	ErrTargetNotFound        = errors.New("target user not found")
 	ErrTargetAlreadyBooked   = errors.New("target user already has booking")
+	ErrOrganizerForbidden    = errors.New("organizer permissions required")
+	ErrOrganizerNotFound     = errors.New("organizer not found")
+	ErrOrganizerExists       = errors.New("organizer already exists")
+	ErrOwnerRequired         = errors.New("owner role required")
 )
 
 type PendingAuthError struct {

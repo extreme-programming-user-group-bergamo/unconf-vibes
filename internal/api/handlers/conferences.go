@@ -5,8 +5,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/katurdays/unconf/internal/api/middleware"
 	"github.com/katurdays/unconf/internal/api/responses"
 	"github.com/katurdays/unconf/internal/service"
 )
@@ -14,11 +17,23 @@ import (
 type serviceConferenceService interface {
 	ListConferences(ctx context.Context) ([]*service.ConferenceResponse, error)
 	GetConference(ctx context.Context, slug string) (*service.ConferenceResponse, error)
+	CreateConference(ctx context.Context, creatorUserID int64, input service.CreateConferenceInput) (*service.ConferenceResponse, error)
 }
 
 // ConferenceHandler handles conference API endpoints.
 type ConferenceHandler struct {
 	conferenceService serviceConferenceService
+}
+
+type CreateConferenceRequest struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+	Capacity    int    `json:"capacity"`
+	HotelEmail  string `json:"hotel_email,omitempty"`
 }
 
 // NewConferenceHandler creates a new ConferenceHandler.
@@ -55,4 +70,53 @@ func (h *ConferenceHandler) GetBySlug(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, conf)
+}
+
+// Create handles POST /conferences.
+func (h *ConferenceHandler) Create(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		responses.WriteError(c, "unauthorized", "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	var req CreateConferenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		responses.WriteError(c, "invalid_request", "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	startDate, err := time.Parse("2006-01-02", strings.TrimSpace(req.StartDate))
+	if err != nil {
+		responses.WriteError(c, "invalid_request", "Invalid start_date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", strings.TrimSpace(req.EndDate))
+	if err != nil {
+		responses.WriteError(c, "invalid_request", "Invalid end_date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+
+	created, err := h.conferenceService.CreateConference(c.Request.Context(), userID, service.CreateConferenceInput{
+		Slug:        req.Slug,
+		Name:        req.Name,
+		Description: req.Description,
+		Location:    req.Location,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Capacity:    req.Capacity,
+		HotelEmail:  req.HotelEmail,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrConferenceExists):
+			responses.WriteError(c, "conflict", "Conference slug already exists", http.StatusConflict)
+		default:
+			slog.Error("failed to create conference", "error", err, "slug", req.Slug, "user_id", userID)
+			responses.WriteError(c, "internal_error", "Failed to create conference", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, created)
 }

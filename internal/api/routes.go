@@ -11,6 +11,8 @@ func NewRouter(
 	tokenValidator middleware.TokenValidator,
 	userHandler *handlers.UserHandler,
 	confHandler *handlers.ConferenceHandler,
+	organizerHandler *handlers.OrganizerHandler,
+	organizerChecker middleware.OrganizerPermissionChecker,
 	roomHandler *handlers.RoomHandler,
 	attendeeHandler *handlers.AttendeeHandler,
 	bookingHandler *handlers.BookingHandler,
@@ -51,7 +53,24 @@ func NewRouter(
 		}
 
 		if attendeeHandler != nil {
-			protected.GET("/conferences/:slug/attendees", attendeeHandler.ListByConference)
+			attendeeRoutes := protected.Group("/conferences/:slug")
+			if organizerChecker != nil {
+				attendeeRoutes.Use(middleware.RequireOrganizer(organizerChecker))
+			}
+			attendeeRoutes.GET("/attendees", attendeeHandler.ListByConference)
+		}
+
+		if confHandler != nil {
+			protected.POST("/conferences", confHandler.Create)
+		}
+
+		if organizerHandler != nil {
+			ownerRoutes := protected.Group("/conferences/:slug")
+			if organizerChecker != nil {
+				ownerRoutes.Use(middleware.RequireOrganizerOwner(organizerChecker))
+			}
+			ownerRoutes.POST("/organizers", organizerHandler.Add)
+			ownerRoutes.DELETE("/organizers/:userID", organizerHandler.Remove)
 		}
 
 		if bookingHandler != nil {

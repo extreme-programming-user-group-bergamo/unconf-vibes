@@ -33,29 +33,32 @@ type AttendeeListResponse struct {
 
 // AttendeeService handles attendee listing logic.
 type AttendeeService struct {
-	confRepo    repository.ConferenceRepository
-	bookingRepo repository.BookingRepository
-	roomRepo    repository.RoomRepository
-	userRepo    repository.UserRepository
+	confRepo      repository.ConferenceRepository
+	organizerRepo repository.ConferenceOrganizerRepository
+	bookingRepo   repository.BookingRepository
+	roomRepo      repository.RoomRepository
+	userRepo      repository.UserRepository
 }
 
 // NewAttendeeService creates a new AttendeeService.
 func NewAttendeeService(
 	confRepo repository.ConferenceRepository,
+	organizerRepo repository.ConferenceOrganizerRepository,
 	bookingRepo repository.BookingRepository,
 	roomRepo repository.RoomRepository,
 	userRepo repository.UserRepository,
 ) *AttendeeService {
 	return &AttendeeService{
-		confRepo:    confRepo,
-		bookingRepo: bookingRepo,
-		roomRepo:    roomRepo,
-		userRepo:    userRepo,
+		confRepo:      confRepo,
+		organizerRepo: organizerRepo,
+		bookingRepo:   bookingRepo,
+		roomRepo:      roomRepo,
+		userRepo:      userRepo,
 	}
 }
 
 // ListAttendees returns public attendees for a conference and an aggregate count of private attendees.
-func (s *AttendeeService) ListAttendees(ctx context.Context, slug string) (*AttendeeListResponse, error) {
+func (s *AttendeeService) ListAttendees(ctx context.Context, slug string, requesterUserID int64) (*AttendeeListResponse, error) {
 	conf, err := s.confRepo.GetBySlug(ctx, slug)
 	if err != nil {
 		if errors.Is(err, repository.ErrConferenceNotFound) {
@@ -84,9 +87,18 @@ func (s *AttendeeService) ListAttendees(ctx context.Context, slug string) (*Atte
 		Attendees: make([]AttendeeResponse, 0, len(bookings)),
 	}
 
+	includePrivate := false
+	if requesterUserID > 0 && s.organizerRepo != nil {
+		isOrganizer, organizerErr := s.organizerRepo.IsOrganizer(ctx, conf.ID, requesterUserID)
+		if organizerErr != nil {
+			return nil, fmt.Errorf("failed to list attendees: %w", organizerErr)
+		}
+		includePrivate = isOrganizer
+	}
+
 	for i := range bookings {
 		booking := bookings[i]
-		if strings.EqualFold(strings.TrimSpace(booking.PrivacySetting), "private") {
+		if !includePrivate && strings.EqualFold(strings.TrimSpace(booking.PrivacySetting), "private") {
 			result.PrivateAttendeesCount++
 			continue
 		}
@@ -97,7 +109,7 @@ func (s *AttendeeService) ListAttendees(ctx context.Context, slug string) (*Atte
 			continue
 		}
 
-		if strings.EqualFold(strings.TrimSpace(user.PrivacySetting), "private") {
+		if !includePrivate && strings.EqualFold(strings.TrimSpace(user.PrivacySetting), "private") {
 			result.PrivateAttendeesCount++
 			continue
 		}

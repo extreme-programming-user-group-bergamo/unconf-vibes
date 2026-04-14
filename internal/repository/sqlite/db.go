@@ -56,10 +56,7 @@ func NewConnectionManager(ctx context.Context, dbPath string) (*sql.DB, error) {
 		}
 	}
 
-	connectionDSN := resolvedPath
-	if resolvedPath != ":memory:" {
-		connectionDSN = withBusyTimeout(resolvedPath, busyTimeoutMS)
-	}
+	connectionDSN := withSQLiteConnectionParams(resolvedPath, busyTimeoutMS)
 
 	if resolvedPath != ":memory:" {
 		if err := ensureDBDirExists(resolvedPath); err != nil {
@@ -82,6 +79,11 @@ func NewConnectionManager(ctx context.Context, dbPath string) (*sql.DB, error) {
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: failed to ping sqlite database: %v", repository.ErrDatabaseInit, err)
+	}
+
+	if err := enableForeignKeys(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("%w: failed to enable sqlite foreign keys: %v", repository.ErrDatabaseInit, err)
 	}
 
 	slog.Info("sqlite database connection initialized", "db_path", resolvedPath)
@@ -200,6 +202,33 @@ func withBusyTimeout(dsn string, timeoutMS int) string {
 	}
 
 	return dsn + separator + "_busy_timeout=" + strconv.Itoa(timeoutMS)
+}
+
+func withSQLiteConnectionParams(dsn string, timeoutMS int) string {
+	withTimeout := withBusyTimeout(dsn, timeoutMS)
+	separator := "&"
+	if !containsQuery(withTimeout) {
+		separator = "?"
+	}
+
+	return withTimeout + separator + "_foreign_keys=on"
+}
+
+func enableForeignKeys(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		return fmt.Errorf("pragma enable failed: %w", err)
+	}
+
+	var foreignKeysEnabled int
+	if err := db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeysEnabled); err != nil {
+		return fmt.Errorf("pragma verify failed: %w", err)
+	}
+
+	if foreignKeysEnabled != 1 {
+		return fmt.Errorf("pragma verify failed: foreign_keys=%d", foreignKeysEnabled)
+	}
+
+	return nil
 }
 
 func containsQuery(dsn string) bool {
