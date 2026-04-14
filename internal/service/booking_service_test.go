@@ -108,7 +108,7 @@ func TestBookingService_CancelBooking_Success(t *testing.T) {
 		},
 		&mockBookingServiceRoomRepo{
 			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
-				return &models.Room{ID: id, RoomNumber: "204", RoomType: "double", PricePerNight: 120}, nil
+				return &models.Room{ID: id, RoomNumber: "204", RoomType: "double", PricePerNight: 120, Capacity: 2}, nil
 			},
 		},
 		&mockBookingServiceConferenceRepo{
@@ -128,6 +128,9 @@ func TestBookingService_CancelBooking_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, "cancelled", result.Status)
 	assert.Equal(t, "204", result.Room.RoomNumber)
+	assert.Equal(t, 2, result.Room.Capacity)
+	assert.Equal(t, 1, result.Room.SpotsTaken)
+	assert.Equal(t, 1, result.Room.SpotsAvailable)
 	assert.Len(t, result.Roommates, 1)
 }
 

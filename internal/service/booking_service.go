@@ -28,10 +28,13 @@ type BookingService struct {
 }
 
 type BookingRoomResponse struct {
-	ID            int64   `json:"id"`
-	RoomNumber    string  `json:"room_number"`
-	RoomType      string  `json:"room_type"`
-	PricePerNight float64 `json:"price_per_night"`
+	ID             int64   `json:"id"`
+	RoomNumber     string  `json:"room_number"`
+	RoomType       string  `json:"room_type"`
+	PricePerNight  float64 `json:"price_per_night"`
+	Capacity       int     `json:"capacity"`
+	SpotsTaken     int     `json:"spots_taken"`
+	SpotsAvailable int     `json:"spots_available"`
 }
 
 type BookingConferenceResponse struct {
@@ -225,10 +228,13 @@ func (s *BookingService) buildBookingResponse(
 		Notes:          strings.TrimSpace(booking.Notes),
 		CreatedAt:      booking.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		Room: BookingRoomResponse{
-			ID:            room.ID,
-			RoomNumber:    room.RoomNumber,
-			RoomType:      room.RoomType,
-			PricePerNight: room.PricePerNight,
+			ID:             room.ID,
+			RoomNumber:     room.RoomNumber,
+			RoomType:       room.RoomType,
+			PricePerNight:  room.PricePerNight,
+			Capacity:       room.Capacity,
+			SpotsTaken:     len(roomOccupants),
+			SpotsAvailable: max(room.Capacity-len(roomOccupants), 0),
 		},
 		Conference: BookingConferenceResponse{
 			ID:        conference.ID,

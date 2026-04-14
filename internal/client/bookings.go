@@ -9,10 +9,13 @@ import (
 
 // BookingRoomResponse represents room data projected into booking payloads.
 type BookingRoomResponse struct {
-	ID            int64   `json:"id"`
-	RoomNumber    string  `json:"room_number"`
-	RoomType      string  `json:"room_type"`
-	PricePerNight float64 `json:"price_per_night"`
+	ID             int64   `json:"id"`
+	RoomNumber     string  `json:"room_number"`
+	RoomType       string  `json:"room_type"`
+	PricePerNight  float64 `json:"price_per_night"`
+	Capacity       int     `json:"capacity"`
+	SpotsTaken     int     `json:"spots_taken"`
+	SpotsAvailable int     `json:"spots_available"`
 }
 
 // BookingConferenceResponse represents conference data projected into booking payloads.

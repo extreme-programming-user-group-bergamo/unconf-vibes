@@ -376,6 +376,47 @@ func TestStatusCmd_AllFlag_NoBookingsMessage(t *testing.T) {
 	assert.Contains(t, stdout.String(), "No bookings found across conferences")
 }
 
+func TestStatusCmd_RendersOpenSpotSummaryAfterRoommateDeparture(t *testing.T) {
+	statusClient := &mockStatusClient{
+		conference: &client.ConferenceResponse{ID: 2, Slug: "socrates-2026"},
+		bookings: []client.BookingResponse{
+			{
+				ID:             11,
+				RoomID:         7,
+				ConferenceID:   2,
+				Status:         "confirmed",
+				PrivacySetting: "public",
+				Room: client.BookingRoomResponse{
+					RoomNumber:     "204",
+					RoomType:       "double",
+					PricePerNight:  189.5,
+					Capacity:       2,
+					SpotsTaken:     1,
+					SpotsAvailable: 1,
+				},
+				Conference: client.BookingConferenceResponse{
+					Slug:      "socrates-2026",
+					Name:      "SoCraTes 2026",
+					StartDate: "2026-09-10",
+					EndDate:   "2026-09-12",
+				},
+			},
+		},
+		requests: []client.RoommateRequestResponse{},
+	}
+
+	cmd := newStatusCmd(statusClient, &mockStatusContextStore{activeConference: "socrates-2026"})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "Room 204 (1/2 spots) - open spot available")
+	assert.Contains(t, stdout.String(), "Type:       double")
+}
+
 func TestRenderRoommates_EmptyDisplayNameFallsBackToAttendee(t *testing.T) {
 	var out bytes.Buffer
 	renderRoommates(&out, []client.BookingRoommateResponse{{DisplayName: "   ", PrivacySetting: "public"}})

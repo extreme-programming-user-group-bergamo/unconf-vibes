@@ -1031,11 +1031,26 @@ func TestDeleteBookings_CancelsBookingAndPreservesRoommate(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, roomBookings, 1)
 	assert.Equal(t, roommate.ID, roomBookings[0].UserID)
+	_, err = bookingRepo.GetActiveByUserAndConference(context.Background(), target.ID, conf.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
 
 	requestRepo := sqlite.NewRoommateRequestRepository(db)
 	updatedOutgoing, err := requestRepo.GetByID(context.Background(), outgoing.ID)
 	require.NoError(t, err)
 	assert.Equal(t, models.RoommateRequestStatusCancelled, updatedOutgoing.Status)
+
+	roomResp, err := http.Get(srv.URL + "/conferences/conf-cancel/rooms")
+	require.NoError(t, err)
+	defer func() { _ = roomResp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, roomResp.StatusCode)
+
+	var roomBody []map[string]interface{}
+	require.NoError(t, json.NewDecoder(roomResp.Body).Decode(&roomBody))
+	require.Len(t, roomBody, 1)
+	assert.Equal(t, "204", roomBody[0]["room_number"])
+	assert.Equal(t, float64(1), roomBody[0]["spots_taken"])
+	assert.Equal(t, float64(1), roomBody[0]["spots_available"])
 }
 
 func TestDeleteBookings_ForbidCancellingOthersBooking(t *testing.T) {

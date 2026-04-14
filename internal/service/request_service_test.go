@@ -299,6 +299,51 @@ func TestRequestService_CreateRequest_TargetAlreadyBookedRejected(t *testing.T) 
 	assert.ErrorIs(t, err, ErrTargetAlreadyBooked)
 }
 
+func TestRequestService_CreateRequest_AllowsOpenSpotAfterRoommateDeparture(t *testing.T) {
+	createCalled := false
+
+	svc := NewRequestService(
+		&mockRequestRepository{
+			createFn: func(_ context.Context, request *models.RoommateRequest) (*models.RoommateRequest, error) {
+				createCalled = true
+				assert.Equal(t, int64(1), request.RequesterID)
+				assert.Equal(t, int64(2), request.TargetID)
+				assert.Equal(t, int64(7), request.RoomID)
+				assert.Equal(t, models.RoommateRequestStatusPending, request.Status)
+				return &models.RoommateRequest{ID: 99, RequesterID: 1, TargetID: 2, RoomID: 7, Status: models.RoommateRequestStatusPending}, nil
+			},
+		},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				// requester remains in room after roommate departure
+				return []*models.Booking{{UserID: 1, ConferenceID: 77}}, nil
+			},
+			getActiveByUserAndConferenceFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, repository.ErrBookingNotFound
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 7, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id}, nil
+			},
+		},
+	)
+
+	created, err := svc.CreateRequest(context.Background(), 1, CreateRoommateRequestInput{
+		TargetID: 2,
+		RoomID:   7,
+	})
+	require.NoError(t, err)
+	assert.True(t, createCalled)
+	require.NotNil(t, created)
+	assert.Equal(t, int64(99), created.ID)
+}
+
 func TestRequestService_ListRequests_EnrichesNamesAndRoomDetails(t *testing.T) {
 	now := time.Now().UTC()
 	svc := NewRequestService(

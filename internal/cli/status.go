@@ -136,13 +136,39 @@ func renderBookingProjection(out io.Writer, booking client.BookingResponse, incl
 		_, _ = fmt.Fprintf(out, "Conference: %s\n", bookingConferenceLabel(booking))
 	}
 
-	_, _ = fmt.Fprintf(out, "  Room:       %s (%s)\n", bookingRoomNumber(booking), bookingRoomType(booking))
+	_, _ = fmt.Fprintf(out, "  Room:       %s\n", bookingRoomSummary(booking))
+	if booking.Room.Capacity > 0 {
+		_, _ = fmt.Fprintf(out, "  Type:       %s\n", bookingRoomType(booking))
+	}
 	_, _ = fmt.Fprintf(out, "  Price:      $%.2f/night\n", bookingPricePerNight(booking))
 	_, _ = fmt.Fprintf(out, "  Dates:      %s - %s\n", bookingStartDate(booking), bookingEndDate(booking))
 	_, _ = fmt.Fprintf(out, "  Privacy:    %s\n", strings.TrimSpace(booking.PrivacySetting))
 	_, _ = fmt.Fprintf(out, "  Status:     %s\n", strings.TrimSpace(booking.Status))
 	renderRoommates(out, booking.Roommates)
 	renderRequestSummary(out, requests)
+}
+
+func bookingRoomSummary(booking client.BookingResponse) string {
+	roomNumber := bookingRoomNumber(booking)
+	if booking.Room.Capacity <= 0 {
+		return fmt.Sprintf("%s (%s)", roomNumber, bookingRoomType(booking))
+	}
+
+	spotsTaken := booking.Room.SpotsTaken
+	if spotsTaken < 0 {
+		spotsTaken = 0
+	}
+
+	summary := fmt.Sprintf("Room %s (%d/%d spots)", roomNumber, spotsTaken, booking.Room.Capacity)
+	openSpots := booking.Room.Capacity - spotsTaken
+	if openSpots == 1 {
+		return summary + " - open spot available"
+	}
+	if openSpots > 1 {
+		return fmt.Sprintf("%s - %d open spots available", summary, openSpots)
+	}
+
+	return summary
 }
 
 func renderRoommates(out io.Writer, roommates []client.BookingRoommateResponse) {
