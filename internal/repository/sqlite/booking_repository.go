@@ -90,6 +90,17 @@ func (r *BookingRepository) ListByConference(ctx context.Context, conferenceID i
 	return r.listBookings(ctx, query, conferenceID)
 }
 
+func (r *BookingRepository) ListByUser(ctx context.Context, userID int64) ([]*models.Booking, error) {
+	query := `
+		SELECT id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+		FROM bookings
+		WHERE user_id = ? AND status != 'cancelled'
+		ORDER BY created_at DESC
+	`
+
+	return r.listBookings(ctx, query, userID)
+}
+
 func (r *BookingRepository) CountByConference(ctx context.Context, conferenceID int64) (int, error) {
 	query := `
 		SELECT COUNT(DISTINCT user_id)
@@ -145,6 +156,88 @@ func (r *BookingRepository) UpdateRoom(ctx context.Context, bookingID, roomID in
 	}
 
 	return updated, nil
+}
+
+func (r *BookingRepository) Cancel(ctx context.Context, bookingID int64) (*models.Booking, error) {
+	query := `
+		UPDATE bookings
+		SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status != 'cancelled'
+		RETURNING id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+	`
+
+	cancelled, err := scanBooking(r.db.QueryRowContext(ctx, query, bookingID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrBookingNotFound
+		}
+		return nil, fmt.Errorf("failed to cancel booking: %w", err)
+	}
+
+	return cancelled, nil
+}
+
+func (r *BookingRepository) CancelAndCancelPendingOutgoingRequests(
+	ctx context.Context,
+	bookingID int64,
+	userID int64,
+) (*models.Booking, int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to begin cancellation transaction: %w", err)
+	}
+
+	rolledBack := false
+	rollback := func() {
+		if rolledBack {
+			return
+		}
+		_ = tx.Rollback()
+		rolledBack = true
+	}
+	defer rollback()
+
+	cancelQuery := `
+		UPDATE bookings
+		SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND user_id = ? AND status != 'cancelled'
+		RETURNING id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+	`
+
+	cancelledBooking, err := scanBooking(tx.QueryRowContext(ctx, cancelQuery, bookingID, userID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, 0, repository.ErrBookingNotFound
+		}
+		return nil, 0, fmt.Errorf("failed to cancel booking transactionally: %w", err)
+	}
+
+	cancelOutgoingQuery := `
+		UPDATE roommate_requests
+		SET status = 'cancelled'
+		WHERE requester_id = ?
+		  AND status = 'pending'
+		  AND room_id IN (
+		    SELECT id FROM rooms WHERE conference_id = ?
+		  )
+	`
+
+	result, err := tx.ExecContext(ctx, cancelOutgoingQuery, userID, cancelledBooking.ConferenceID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to cancel pending outgoing roommate requests transactionally: %w", err)
+	}
+
+	cancelledRequestCount, err := result.RowsAffected()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read cancelled roommate request count: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, 0, fmt.Errorf("failed to commit cancellation transaction: %w", err)
+	}
+	rolledBack = true
+
+	return cancelledBooking, cancelledRequestCount, nil
 }
 
 func (r *BookingRepository) listBookings(ctx context.Context, query string, arg any) ([]*models.Booking, error) {

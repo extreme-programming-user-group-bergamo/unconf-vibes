@@ -71,6 +71,14 @@ func (c *bookCommandClient) CreateBooking(ctx context.Context, input client.Crea
 	return c.authClient.CreateBooking(ctx, input)
 }
 
+func (c *bookCommandClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
+	return c.authClient.ListBookings(ctx)
+}
+
+func (c *bookCommandClient) CancelBooking(ctx context.Context, bookingID int64) (*client.BookingResponse, error) {
+	return c.authClient.CancelBooking(ctx, bookingID)
+}
+
 func (c *statusCommandClient) ListBookings(ctx context.Context) ([]client.BookingResponse, error) {
 	return c.authClient.ListBookings(ctx)
 }
@@ -229,6 +237,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newCheckoutCmd(apiClient, ctxManager))
 	rootCmd.AddCommand(newRoomsCmd(roomsClient, ctxManager))
 	rootCmd.AddCommand(newBookCmd(bookClient, ctxManager))
+	rootCmd.AddCommand(newCancelCmd(bookClient, ctxManager))
 	rootCmd.AddCommand(newConfigCmd(authClient))
 
 	return rootCmd

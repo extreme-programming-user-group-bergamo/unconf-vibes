@@ -212,7 +212,7 @@ func resolvedRequestUpdates(requests []client.RoommateRequestResponse) []string 
 
 	for i := range requests {
 		status := strings.ToLower(strings.TrimSpace(requests[i].Status))
-		if status != "accepted" && status != "declined" {
+		if status != "accepted" && status != "declined" && status != "cancelled" {
 			continue
 		}
 

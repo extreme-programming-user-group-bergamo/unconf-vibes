@@ -118,6 +118,30 @@ func (r *RoommateRequestRepository) UpdateStatus(ctx context.Context, id int64, 
 	return updated, nil
 }
 
+func (r *RoommateRequestRepository) CancelPendingOutgoingByConference(ctx context.Context, requesterID, conferenceID int64) (int64, error) {
+	query := `
+		UPDATE roommate_requests
+		SET status = 'cancelled'
+		WHERE requester_id = ?
+		  AND status = 'pending'
+		  AND room_id IN (
+		    SELECT id FROM rooms WHERE conference_id = ?
+		  )
+	`
+
+	result, err := r.db.ExecContext(ctx, query, requesterID, conferenceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cancel pending outgoing roommate requests by conference: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read cancelled roommate request count: %w", err)
+	}
+
+	return rowsAffected, nil
+}
+
 func scanRoommateRequest(s scanner) (*models.RoommateRequest, error) {
 	var req models.RoommateRequest
 	if err := s.Scan(

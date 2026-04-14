@@ -198,6 +198,19 @@ func TestBookingRepository_ListByConference_ExcludesCancelled(t *testing.T) {
 	assert.Empty(t, bookings)
 }
 
+func TestBookingRepository_ListByUser_ReturnsActiveBookings(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+
+	_, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	bookings, err := f.bookingRepo.ListByUser(ctx, f.user.ID)
+	require.NoError(t, err)
+	require.Len(t, bookings, 1)
+	assert.Equal(t, f.user.ID, bookings[0].UserID)
+}
+
 func TestBookingRepository_CountByConference_DistinctUsers(t *testing.T) {
 	f := setupBookingFixture(t)
 	ctx := context.Background()
@@ -275,4 +288,122 @@ func TestBookingRepository_UpdateRoom_NotFound(t *testing.T) {
 	_, err := f.bookingRepo.UpdateRoom(context.Background(), 9999, f.room.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}
+
+func TestBookingRepository_Cancel_Success(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+
+	created, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	cancelled, err := f.bookingRepo.Cancel(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.BookingStatusCancelled, cancelled.Status)
+	require.NotNil(t, cancelled.CancelledAt)
+}
+
+func TestBookingRepository_Cancel_NotFound(t *testing.T) {
+	f := setupBookingFixture(t)
+
+	_, err := f.bookingRepo.Cancel(context.Background(), 9999)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}
+
+func TestBookingRepository_CancelAndCancelPendingOutgoingRequests_Success(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+	requestRepo := NewRoommateRequestRepository(f.bookingRepo.db)
+
+	targetUser, err := f.userRepo.Create(ctx, &models.User{
+		GitHubID:    "gh_booking_cancel_target",
+		Email:       "booking-cancel-target@test.com",
+		DisplayName: "Cancel Target",
+	})
+	require.NoError(t, err)
+
+	otherConference, err := f.confRepo.Create(ctx, newTestConference("booking-cancel-other-conf"))
+	require.NoError(t, err)
+	otherRoom, err := f.roomRepo.Create(ctx, newTestRoom(otherConference.ID, "109"))
+	require.NoError(t, err)
+
+	createdBooking, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	targetConferencePending, err := requestRepo.Create(ctx, &models.RoommateRequest{
+		RequesterID: f.user.ID,
+		TargetID:    targetUser.ID,
+		RoomID:      f.room.ID,
+		Status:      models.RoommateRequestStatusPending,
+	})
+	require.NoError(t, err)
+
+	otherConferencePending, err := requestRepo.Create(ctx, &models.RoommateRequest{
+		RequesterID: f.user.ID,
+		TargetID:    targetUser.ID,
+		RoomID:      otherRoom.ID,
+		Status:      models.RoommateRequestStatusPending,
+	})
+	require.NoError(t, err)
+
+	cancelledBooking, cancelledCount, err := f.bookingRepo.CancelAndCancelPendingOutgoingRequests(ctx, createdBooking.ID, f.user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cancelledCount)
+	assert.Equal(t, models.BookingStatusCancelled, cancelledBooking.Status)
+	require.NotNil(t, cancelledBooking.CancelledAt)
+
+	updatedTargetConferenceRequest, err := requestRepo.GetByID(ctx, targetConferencePending.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusCancelled, updatedTargetConferenceRequest.Status)
+
+	updatedOtherConferenceRequest, err := requestRepo.GetByID(ctx, otherConferencePending.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusPending, updatedOtherConferenceRequest.Status)
+}
+
+func TestBookingRepository_CancelAndCancelPendingOutgoingRequests_RollsBackOnRequestUpdateFailure(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+	requestRepo := NewRoommateRequestRepository(f.bookingRepo.db)
+
+	targetUser, err := f.userRepo.Create(ctx, &models.User{
+		GitHubID:    "gh_booking_cancel_rollback_target",
+		Email:       "booking-cancel-rollback-target@test.com",
+		DisplayName: "Rollback Target",
+	})
+	require.NoError(t, err)
+
+	createdBooking, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	pendingRequest, err := requestRepo.Create(ctx, &models.RoommateRequest{
+		RequesterID: f.user.ID,
+		TargetID:    targetUser.ID,
+		RoomID:      f.room.ID,
+		Status:      models.RoommateRequestStatusPending,
+	})
+	require.NoError(t, err)
+
+	_, err = f.bookingRepo.db.ExecContext(ctx, `
+		CREATE TRIGGER trg_block_roommate_request_cancel
+		BEFORE UPDATE OF status ON roommate_requests
+		WHEN NEW.status = 'cancelled'
+		BEGIN
+			SELECT RAISE(ABORT, 'blocked roommate request cancellation');
+		END;
+	`)
+	require.NoError(t, err)
+
+	_, _, err = f.bookingRepo.CancelAndCancelPendingOutgoingRequests(ctx, createdBooking.ID, f.user.ID)
+	require.Error(t, err)
+
+	bookingAfterFailure, err := f.bookingRepo.GetByID(ctx, createdBooking.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.BookingStatusRequested, bookingAfterFailure.Status)
+	assert.Nil(t, bookingAfterFailure.CancelledAt)
+
+	requestAfterFailure, err := requestRepo.GetByID(ctx, pendingRequest.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusPending, requestAfterFailure.Status)
 }

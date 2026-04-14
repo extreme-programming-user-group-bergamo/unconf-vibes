@@ -833,6 +833,70 @@ func TestListBookings_Unauthorized(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnauthorized)
 }
 
+func TestCancelBooking_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/bookings/44", r.URL.Path)
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(BookingResponse{ID: 44, Status: "cancelled"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	booking, err := c.CancelBooking(context.Background(), "access-token", 44)
+
+	require.NoError(t, err)
+	require.NotNil(t, booking)
+	assert.Equal(t, "cancelled", booking.Status)
+}
+
+func TestCancelBooking_ErrorMappings(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		body     map[string]any
+		expected error
+	}{
+		{
+			name:     "unauthorized",
+			status:   http.StatusUnauthorized,
+			body:     map[string]any{"error": map[string]string{"code": "unauthorized", "message": "invalid token"}},
+			expected: ErrUnauthorized,
+		},
+		{
+			name:     "forbidden",
+			status:   http.StatusForbidden,
+			body:     map[string]any{"error": map[string]string{"code": "forbidden", "message": "not yours"}},
+			expected: ErrBookingForbidden,
+		},
+		{
+			name:     "not found",
+			status:   http.StatusNotFound,
+			body:     map[string]any{"error": map[string]string{"code": "not_found", "message": "missing"}},
+			expected: ErrBookingNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_ = json.NewEncoder(w).Encode(tc.body)
+			}))
+			defer srv.Close()
+
+			c := NewClient(srv.URL)
+			booking, err := c.CancelBooking(context.Background(), "access-token", 99)
+
+			assert.Nil(t, booking)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, tc.expected)
+		})
+	}
+}
+
 func TestListRoommateRequests_Success(t *testing.T) {
 	expected := []RoommateRequestResponse{
 		{ID: 9, ConferenceID: 4, ConferenceSlug: "socrates-2026", Status: "pending", Direction: "incoming"},

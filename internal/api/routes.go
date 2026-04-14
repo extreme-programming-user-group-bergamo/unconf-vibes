@@ -13,6 +13,7 @@ func NewRouter(
 	confHandler *handlers.ConferenceHandler,
 	roomHandler *handlers.RoomHandler,
 	attendeeHandler *handlers.AttendeeHandler,
+	bookingHandler *handlers.BookingHandler,
 	requestHandler *handlers.RequestHandler,
 ) *gin.Engine {
 	router := gin.New()
@@ -51,6 +52,11 @@ func NewRouter(
 
 		if attendeeHandler != nil {
 			protected.GET("/conferences/:slug/attendees", attendeeHandler.ListByConference)
+		}
+
+		if bookingHandler != nil {
+			protected.GET("/bookings", bookingHandler.List)
+			protected.DELETE("/bookings/:id", bookingHandler.Cancel)
 		}
 
 		if requestHandler != nil {

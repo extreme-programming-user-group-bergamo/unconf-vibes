@@ -20,6 +20,8 @@ var (
 	ErrConferenceNotFound    = errors.New("conference not found")
 	ErrRoomNotFound          = errors.New("room not found")
 	ErrRoomFull              = errors.New("room is full")
+	ErrBookingNotFound       = errors.New("booking not found")
+	ErrBookingForbidden      = errors.New("booking is not owned by user")
 	ErrCannotRequestSelf     = errors.New("cannot request yourself")
 	ErrRequestNotFound       = errors.New("roommate request not found")
 	ErrRequestForbidden      = errors.New("roommate request is not owned by user")

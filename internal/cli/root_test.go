@@ -104,6 +104,15 @@ func TestRootCmdIncludesRequestsCommand(t *testing.T) {
 	assert.Equal(t, "requests", requestsCmd.Name())
 }
 
+func TestRootCmdIncludesCancelCommand(t *testing.T) {
+	cmd := NewRootCmd()
+
+	cancelCmd, _, err := cmd.Find([]string{"cancel"})
+	require.NoError(t, err)
+	require.NotNil(t, cancelCmd)
+	assert.Equal(t, "cancel", cancelCmd.Name())
+}
+
 func TestDBStatusCommand(t *testing.T) {
 	t.Setenv("UNCONF_API_ENDPOINT", "http://127.0.0.1:8080")
 	t.Setenv("UNCONF_LOG_LEVEL", "debug")

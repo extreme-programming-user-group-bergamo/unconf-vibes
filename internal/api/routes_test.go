@@ -65,10 +65,12 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepo)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
 	requestRepo := sqlite.NewRoommateRequestRepository(db)
+	bookingService := service.NewBookingService(bookingRepo, roomRepo, conferenceRepo, userRepo)
+	bookingHandler := handlers.NewBookingHandler(bookingService)
 	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepo)
 	requestHandler := handlers.NewRequestHandler(requestService)
 
-	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, requestHandler)
+	router := NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, bookingHandler, requestHandler)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -992,6 +994,71 @@ func TestPutRequestsDecline_UpdatesStatusOnly(t *testing.T) {
 	_, err = bookingRepo.GetActiveByUserAndConference(context.Background(), target.ID, conf.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
+}
+
+func TestDeleteBookings_CancelsBookingAndPreservesRoommate(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	canceller := createTestUserWithName(t, db, "gh-cancel-owner", "cancel-owner@test.com", "Canceller", "public")
+	roommate := createTestUserWithName(t, db, "gh-cancel-roommate", "cancel-roommate@test.com", "Roommate", "public")
+	target := createTestUserWithName(t, db, "gh-cancel-target", "cancel-target@test.com", "Target", "public")
+
+	createTestConference(t, db, "conf-cancel", "Cancel Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-cancel")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "204", "double", 120, 2)
+	bookingToCancel := createTestBooking(t, db, room.ID, canceller.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	createTestBooking(t, db, room.ID, roommate.ID, conf.ID, models.BookingStatusConfirmed, "public")
+	outgoing := createTestRoommateRequest(t, db, canceller.ID, target.ID, room.ID)
+
+	token, _ := createTestSession(t, db, canceller.ID, tokenService)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/bookings/"+jsonNumber(bookingToCancel.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	cancelledBooking, err := bookingRepo.GetByID(context.Background(), bookingToCancel.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.BookingStatusCancelled, cancelledBooking.Status)
+	require.NotNil(t, cancelledBooking.CancelledAt)
+
+	roomBookings, err := bookingRepo.ListByRoom(context.Background(), room.ID)
+	require.NoError(t, err)
+	require.Len(t, roomBookings, 1)
+	assert.Equal(t, roommate.ID, roomBookings[0].UserID)
+
+	requestRepo := sqlite.NewRoommateRequestRepository(db)
+	updatedOutgoing, err := requestRepo.GetByID(context.Background(), outgoing.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.RoommateRequestStatusCancelled, updatedOutgoing.Status)
+}
+
+func TestDeleteBookings_ForbidCancellingOthersBooking(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	owner := createTestUserWithName(t, db, "gh-cancel-owner2", "cancel-owner2@test.com", "Owner", "public")
+	otherUser := createTestUserWithName(t, db, "gh-cancel-other2", "cancel-other2@test.com", "Other", "public")
+
+	createTestConference(t, db, "conf-cancel-forbidden", "Cancel Forbidden Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-cancel-forbidden")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "303", "double", 120, 2)
+	ownersBooking := createTestBooking(t, db, room.ID, owner.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	otherToken, _ := createTestSession(t, db, otherUser.ID, tokenService)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/bookings/"+jsonNumber(ownersBooking.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+otherToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func jsonNumber(v int64) string {

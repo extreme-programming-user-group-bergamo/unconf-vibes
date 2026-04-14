@@ -481,6 +481,70 @@ func TestAuthenticatedClient_ListBookings_Success(t *testing.T) {
 	assert.Equal(t, int64(101), bookings[0].ID)
 }
 
+func TestAuthenticatedClient_CancelBooking_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/bookings/55", r.URL.Path)
+		assert.Equal(t, "Bearer valid-access-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(BookingResponse{ID: 55, Status: "cancelled"})
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("valid-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	booking, err := ac.CancelBooking(context.Background(), 55)
+
+	require.NoError(t, err)
+	require.NotNil(t, booking)
+	assert.Equal(t, "cancelled", booking.Status)
+}
+
+func TestAuthenticatedClient_CancelBooking_AutoRefresh(t *testing.T) {
+	var cancelCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/bookings/77":
+			n := cancelCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{
+						"code":    "unauthorized",
+						"message": "token expired",
+					},
+				})
+				return
+			}
+
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(BookingResponse{ID: 77, Status: "cancelled"})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    86400,
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	booking, err := ac.CancelBooking(context.Background(), 77)
+
+	require.NoError(t, err)
+	require.NotNil(t, booking)
+	assert.Equal(t, int32(2), cancelCallCount.Load())
+}
+
 func TestAuthenticatedClient_ListRoommateRequests_AutoRefresh(t *testing.T) {
 	var requestCallCount atomic.Int32
 

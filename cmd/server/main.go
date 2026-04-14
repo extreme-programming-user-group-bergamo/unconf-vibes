@@ -94,10 +94,12 @@ func main() {
 	roomHandler := handlers.NewRoomHandler(roomService)
 	attendeeService := service.NewAttendeeService(conferenceRepo, bookingRepo, roomRepo, userRepository)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
+	bookingService := service.NewBookingService(bookingRepo, roomRepo, conferenceRepo, userRepository)
+	bookingHandler := handlers.NewBookingHandler(bookingService)
 	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepository)
 	requestHandler := handlers.NewRequestHandler(requestService)
 
-	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, requestHandler)
+	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, roomHandler, attendeeHandler, bookingHandler, requestHandler)
 
 	server := &http.Server{
 		Addr:    listenAddr,

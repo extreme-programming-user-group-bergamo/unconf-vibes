@@ -94,6 +94,7 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 			{ConferenceID: 2, Status: "pending", Direction: "outgoing"},
 			{ConferenceID: 2, Status: "accepted", Direction: "incoming", RequesterName: "Charlie", RoomNumber: "101"},
 			{ConferenceID: 2, Status: "declined", Direction: "outgoing", TargetName: "Dora"},
+			{ConferenceID: 2, Status: "cancelled", Direction: "outgoing", TargetName: "Eve"},
 		},
 	}
 
@@ -120,6 +121,7 @@ func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T)
 	assert.Contains(t, output, "Pending outgoing: 1")
 	assert.Contains(t, output, "Accepted Charlie's request for room 101")
 	assert.Contains(t, output, "Your request to Dora was declined")
+	assert.Contains(t, output, "Your request to Eve was cancelled")
 }
 
 func TestStatusCmd_AllFlagRendersAcrossConferences(t *testing.T) {

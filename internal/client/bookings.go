@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // BookingRoomResponse represents room data projected into booking payloads.
@@ -122,6 +123,40 @@ func (c *Client) CreateBooking(ctx context.Context, accessToken string, input Cr
 
 	if resp.IsError() {
 		return nil, fmt.Errorf("failed to create booking: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return &result, nil
+}
+
+// CancelBooking cancels a booking via DELETE /bookings/{id}.
+func (c *Client) CancelBooking(ctx context.Context, accessToken string, bookingID int64) (*BookingResponse, error) {
+	var result BookingResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Delete("/bookings/" + strconv.FormatInt(bookingID, 10))
+	if err != nil {
+		return nil, fmt.Errorf("failed to cancel booking: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to cancel booking: %w", ErrUnauthorized)
+	}
+
+	if resp.StatusCode() == http.StatusForbidden {
+		return nil, fmt.Errorf("failed to cancel booking: %w", ErrBookingForbidden)
+	}
+
+	if resp.StatusCode() == http.StatusNotFound && errEnvelope.Error.Code == "not_found" {
+		return nil, fmt.Errorf("failed to cancel booking: %w", ErrBookingNotFound)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to cancel booking: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
 	}
 
 	return &result, nil

@@ -5,9 +5,10 @@ import "time"
 type RoommateRequestStatus string
 
 const (
-	RoommateRequestStatusPending  RoommateRequestStatus = "pending"
-	RoommateRequestStatusAccepted RoommateRequestStatus = "accepted"
-	RoommateRequestStatusDeclined RoommateRequestStatus = "declined"
+	RoommateRequestStatusPending   RoommateRequestStatus = "pending"
+	RoommateRequestStatusAccepted  RoommateRequestStatus = "accepted"
+	RoommateRequestStatusDeclined  RoommateRequestStatus = "declined"
+	RoommateRequestStatusCancelled RoommateRequestStatus = "cancelled"
 )
 
 type RoommateRequest struct {
