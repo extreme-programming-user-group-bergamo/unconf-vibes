@@ -1,0 +1,119 @@
+schema: 1
+story: '5.5'
+story_title: 'Story 5.5: Email Template System'
+gate: PASS
+status_reason: 'Rerun for address/header injection blocker passed: CRLF hardening in Address validation/formatting and Mailgun recipient formatting are safe; AC1-AC6 remain satisfied with tests/lint passing.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-14T23:30:00Z'
+quality_score: 94
+expires: '2026-04-28T00:00:00Z'
+
+top_issues:
+  - severity: low
+    summary: 'MailHog integration currently validates only new-booking template in end-to-end flow.'
+    refs:
+      - 'internal/email/mailhog_integration_test.go:18'
+      - 'README.md:54'
+  - severity: low
+    summary: 'Provider adapter tests cover happy-path auth/header behavior but not non-2xx response body assertions.'
+    refs:
+      - 'internal/email/sendgrid_sender_test.go:13'
+      - 'internal/email/mailgun_sender_test.go:13'
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 19
+    suites:
+      - '.env.example'
+      - 'README.md'
+      - 'internal/config/config.go'
+      - 'internal/config/config_test.go'
+      - 'internal/email/types.go'
+      - 'internal/email/types_test.go'
+      - 'internal/email/mapper.go'
+      - 'internal/email/mapper_test.go'
+      - 'internal/email/renderer.go'
+      - 'internal/email/renderer_test.go'
+      - 'internal/email/service.go'
+      - 'internal/email/service_test.go'
+      - 'internal/email/provider.go'
+      - 'internal/email/provider_test.go'
+      - 'internal/email/smtp_sender.go'
+      - 'internal/email/sendgrid_sender.go'
+      - 'internal/email/mailgun_sender.go'
+      - 'internal/email/mailhog_integration_test.go'
+      - 'internal/email/templates/*.tmpl'
+  tests_executed:
+    - 'go test ./internal/email -count=1'
+    - 'go test ./internal/config -count=1'
+    - 'go test ./internal/email -run ''TestAddressValidate_RejectsCRLFInjection|TestAddressHeaderValue_UsesSafeFormatting|TestMailgunSender_Send'' -v -count=1'
+    - 'make lint'
+  risks_identified:
+    count: 2
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+    ac_trace:
+      - ac: 1
+        coverage:
+          - 'internal/email/templates/new_booking.tmpl'
+          - 'internal/email/templates/cancellation.tmpl'
+          - 'internal/email/templates/modification.tmpl'
+          - 'internal/email/renderer.go:17'
+      - ac: 2
+        coverage:
+          - 'internal/email/templates/new_booking.tmpl:5'
+          - 'internal/email/templates/cancellation.tmpl:5'
+          - 'internal/email/templates/modification.tmpl:5'
+          - 'internal/email/renderer_test.go:10'
+      - ac: 3
+        coverage:
+          - 'internal/email/mapper.go:17'
+          - 'internal/email/mapper.go:39'
+          - 'internal/email/mapper_test.go:12'
+          - 'internal/email/mapper_test.go:39'
+      - ac: 4
+        coverage:
+          - 'internal/email/mailhog_integration_test.go:18'
+          - 'README.md:51'
+      - ac: 5
+        coverage:
+          - 'internal/config/config.go:62'
+          - '.env.example:7'
+          - 'internal/config/config_test.go:120'
+      - ac: 6
+        coverage:
+          - 'internal/email/provider.go:21'
+          - 'internal/email/sendgrid_sender.go:36'
+          - 'internal/email/mailgun_sender.go:36'
+          - 'internal/email/provider_test.go:11'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Address validation now rejects CRLF in name/email and enforces strict parsed-address checks; HeaderValue uses safe RFC formatting; Mailgun test asserts no CR/LF in recipient payload.'
+  performance:
+    status: PASS
+    notes: 'Rendering/mapping are lightweight; provider clients use bounded timeouts and no unbounded retries.'
+  reliability:
+    status: PASS
+    notes: 'Config defaults and validation prevent many misconfigurations; SMTP/SendGrid/Mailgun return explicit wrapped errors on failure.'
+  maintainability:
+    status: PASS
+    notes: 'Email concerns are isolated behind renderer/sender/service interfaces with focused unit tests.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add MailHog integration coverage for cancellation/modification templates to reduce E2E regression risk.'
+      refs:
+        - 'internal/email/mailhog_integration_test.go'
+      suggested_owner: dev
+    - action: 'Add SendGrid/Mailgun adapter tests for non-2xx responses and malformed payload edge cases.'
+      refs:
+        - 'internal/email/sendgrid_sender_test.go'
+        - 'internal/email/mailgun_sender_test.go'
+      suggested_owner: dev

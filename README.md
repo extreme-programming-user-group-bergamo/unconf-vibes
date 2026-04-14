@@ -48,6 +48,16 @@ This produces:
 make test
 ```
 
+MailHog development verification (optional, local only):
+
+```bash
+UNCONF_MAILHOG_TEST=1 \
+UNCONF_SMTP_HOST=localhost \
+UNCONF_SMTP_PORT=1025 \
+UNCONF_MAILHOG_API_URL=http://localhost:8025 \
+go test ./internal/email -run TestMailHog_NewBookingRenderAndSend -count=1
+```
+
 Manual API check:
 
 ```bash

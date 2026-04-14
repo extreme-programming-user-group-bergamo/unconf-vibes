@@ -13,16 +13,20 @@ import (
 )
 
 const (
-	defaultAPIEndpoint = "http://localhost:8080"
-	defaultLogLevel    = "info"
-	defaultDBPath      = ".unconf.db"
-	defaultDBMaxOpen   = 25
-	defaultDBMaxIdle   = 25
-	defaultDBBusyMS    = 5000
-	defaultTokenTTL    = 24 * time.Hour
-	defaultRefreshTTL  = 7 * 24 * time.Hour
-	defaultConfigName  = ".unconf"
-	defaultConfigType  = "yaml"
+	defaultAPIEndpoint   = "http://localhost:8080"
+	defaultLogLevel      = "info"
+	defaultDBPath        = ".unconf.db"
+	defaultDBMaxOpen     = 25
+	defaultDBMaxIdle     = 25
+	defaultDBBusyMS      = 5000
+	defaultTokenTTL      = 24 * time.Hour
+	defaultRefreshTTL    = 7 * 24 * time.Hour
+	defaultConfigName    = ".unconf"
+	defaultConfigType    = "yaml"
+	defaultEmailProvider = "smtp"
+	defaultSMTPPort      = 1025
+	defaultSendGridURL   = "https://api.sendgrid.com/v3/mail/send"
+	defaultMailgunURL    = "https://api.mailgun.net/v3"
 )
 
 type LoadOptions struct {
@@ -55,6 +59,10 @@ func LoadConfig(ctx context.Context, opts LoadOptions) (*Config, error) {
 	v.SetDefault("db_busy_timeout_ms", defaultDBBusyMS)
 	v.SetDefault("token_ttl", defaultTokenTTL.String())
 	v.SetDefault("refresh_ttl", defaultRefreshTTL.String())
+	v.SetDefault("email_provider", defaultEmailProvider)
+	v.SetDefault("smtp_port", defaultSMTPPort)
+	v.SetDefault("sendgrid_base_url", defaultSendGridURL)
+	v.SetDefault("mailgun_base_url", defaultMailgunURL)
 
 	for configKey, flagName := range opts.FlagBindings {
 		if opts.FlagSet == nil {
@@ -164,4 +172,56 @@ func (c *Config) GetRefreshTTL() time.Duration {
 	}
 
 	return ttl
+}
+
+func (c *Config) GetEmailProvider() string {
+	return c.viper.GetString("email_provider")
+}
+
+func (c *Config) GetEmailFromAddress() string {
+	return c.viper.GetString("email_from_address")
+}
+
+func (c *Config) GetEmailFromName() string {
+	return c.viper.GetString("email_from_name")
+}
+
+func (c *Config) GetSMTPHost() string {
+	return c.viper.GetString("smtp_host")
+}
+
+func (c *Config) GetSMTPPort() int {
+	return c.viper.GetInt("smtp_port")
+}
+
+func (c *Config) GetSMTPUsername() string {
+	return c.viper.GetString("smtp_username")
+}
+
+func (c *Config) GetSMTPPassword() string {
+	return c.viper.GetString("smtp_password")
+}
+
+func (c *Config) GetSMTPUseTLS() bool {
+	return c.viper.GetBool("smtp_use_tls")
+}
+
+func (c *Config) GetSendGridAPIKey() string {
+	return c.viper.GetString("sendgrid_api_key")
+}
+
+func (c *Config) GetSendGridBaseURL() string {
+	return c.viper.GetString("sendgrid_base_url")
+}
+
+func (c *Config) GetMailgunAPIKey() string {
+	return c.viper.GetString("mailgun_api_key")
+}
+
+func (c *Config) GetMailgunDomain() string {
+	return c.viper.GetString("mailgun_domain")
+}
+
+func (c *Config) GetMailgunBaseURL() string {
+	return c.viper.GetString("mailgun_base_url")
 }

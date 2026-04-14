@@ -96,6 +96,10 @@ func TestLoadConfigDefaultsApplied(t *testing.T) {
 	assert.Equal(t, defaultDBBusyMS, cfg.GetDBBusyTimeoutMS())
 	assert.Equal(t, defaultTokenTTL, cfg.GetTokenTTL())
 	assert.Equal(t, defaultRefreshTTL, cfg.GetRefreshTTL())
+	assert.Equal(t, defaultEmailProvider, cfg.GetEmailProvider())
+	assert.Equal(t, defaultSMTPPort, cfg.GetSMTPPort())
+	assert.Equal(t, defaultSendGridURL, cfg.GetSendGridBaseURL())
+	assert.Equal(t, defaultMailgunURL, cfg.GetMailgunBaseURL())
 }
 
 func TestLoadConfigAutoDiscoversHomeFile(t *testing.T) {
@@ -111,4 +115,37 @@ func TestLoadConfigAutoDiscoversHomeFile(t *testing.T) {
 
 	assert.Equal(t, "https://from-home.example", cfg.GetAPIEndpoint())
 	assert.Equal(t, homeCfgPath, cfg.GetConfigFile())
+}
+
+func TestLoadConfigEmailSettingsFromEnvironment(t *testing.T) {
+	t.Setenv("UNCONF_EMAIL_PROVIDER", "mailgun")
+	t.Setenv("UNCONF_EMAIL_FROM_ADDRESS", "noreply@unconf.dev")
+	t.Setenv("UNCONF_EMAIL_FROM_NAME", "UNCONF")
+	t.Setenv("UNCONF_SMTP_HOST", "localhost")
+	t.Setenv("UNCONF_SMTP_PORT", "1025")
+	t.Setenv("UNCONF_SMTP_USERNAME", "smtp-user")
+	t.Setenv("UNCONF_SMTP_PASSWORD", "smtp-pass")
+	t.Setenv("UNCONF_SMTP_USE_TLS", "true")
+	t.Setenv("UNCONF_SENDGRID_API_KEY", "sg-key")
+	t.Setenv("UNCONF_SENDGRID_BASE_URL", "https://sendgrid.example.local/send")
+	t.Setenv("UNCONF_MAILGUN_API_KEY", "mg-key")
+	t.Setenv("UNCONF_MAILGUN_DOMAIN", "mg.example.com")
+	t.Setenv("UNCONF_MAILGUN_BASE_URL", "https://mailgun.example.local/v3")
+
+	cfg, err := LoadConfig(context.Background(), LoadOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, "mailgun", cfg.GetEmailProvider())
+	assert.Equal(t, "noreply@unconf.dev", cfg.GetEmailFromAddress())
+	assert.Equal(t, "UNCONF", cfg.GetEmailFromName())
+	assert.Equal(t, "localhost", cfg.GetSMTPHost())
+	assert.Equal(t, 1025, cfg.GetSMTPPort())
+	assert.Equal(t, "smtp-user", cfg.GetSMTPUsername())
+	assert.Equal(t, "smtp-pass", cfg.GetSMTPPassword())
+	assert.True(t, cfg.GetSMTPUseTLS())
+	assert.Equal(t, "sg-key", cfg.GetSendGridAPIKey())
+	assert.Equal(t, "https://sendgrid.example.local/send", cfg.GetSendGridBaseURL())
+	assert.Equal(t, "mg-key", cfg.GetMailgunAPIKey())
+	assert.Equal(t, "mg.example.com", cfg.GetMailgunDomain())
+	assert.Equal(t, "https://mailgun.example.local/v3", cfg.GetMailgunBaseURL())
 }
