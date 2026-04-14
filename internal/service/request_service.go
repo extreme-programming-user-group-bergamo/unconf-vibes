@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/katurdays/unconf/internal/models"
@@ -22,6 +23,7 @@ type requestBookingRepository interface {
 	ListByRoom(ctx context.Context, roomID int64) ([]*models.Booking, error)
 	GetActiveByUserAndConference(ctx context.Context, userID, conferenceID int64) (*models.Booking, error)
 	UpdateRoom(ctx context.Context, bookingID, roomID int64) (*models.Booking, error)
+	Cancel(ctx context.Context, bookingID int64) (*models.Booking, error)
 }
 
 type requestRoomRepository interface {
@@ -38,6 +40,7 @@ type RequestService struct {
 	bookingRepo requestBookingRepository
 	roomRepo    requestRoomRepository
 	userRepo    requestUserRepository
+	notifier    HotelEmailNotifier
 }
 
 type CreateRoommateRequestInput struct {
@@ -67,12 +70,19 @@ func NewRequestService(
 	bookingRepo requestBookingRepository,
 	roomRepo requestRoomRepository,
 	userRepo requestUserRepository,
+	notifier ...HotelEmailNotifier,
 ) *RequestService {
+	var hotelNotifier HotelEmailNotifier
+	if len(notifier) > 0 {
+		hotelNotifier = notifier[0]
+	}
+
 	return &RequestService{
 		requestRepo: requestRepo,
 		bookingRepo: bookingRepo,
 		roomRepo:    roomRepo,
 		userRepo:    userRepo,
+		notifier:    hotelNotifier,
 	}
 }
 
@@ -286,18 +296,35 @@ func (s *RequestService) AcceptRequest(ctx context.Context, requestID int64, use
 		return nil, fmt.Errorf("failed to accept roommate request: %w", ErrRoomFull)
 	}
 
+	var createdBooking *models.Booking
+	var movedBookingID int64
+	var originalRoomID int64
+
 	if targetBooking == nil {
-		_, err = s.bookingRepo.Create(ctx, &models.Booking{
+		created, createErr := s.bookingRepo.Create(ctx, &models.Booking{
 			RoomID:         req.RoomID,
 			UserID:         req.TargetID,
 			ConferenceID:   requesterBooking.ConferenceID,
 			Status:         models.BookingStatusRequested,
 			PrivacySetting: "public",
 		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to accept roommate request: %w", err)
+		if createErr != nil {
+			return nil, fmt.Errorf("failed to accept roommate request: %w", createErr)
+		}
+		createdBooking = created
+		if s.notifier != nil {
+			if notifyErr := s.notifier.NotifyBookingCreated(ctx, created); notifyErr != nil {
+				slog.Error("failed to send hotel booking creation email",
+					"error", notifyErr,
+					"booking_id", created.ID,
+					"conference_id", created.ConferenceID,
+					"request_id", req.ID,
+				)
+			}
 		}
 	} else if targetBooking.RoomID != req.RoomID {
+		movedBookingID = targetBooking.ID
+		originalRoomID = targetBooking.RoomID
 		_, err = s.bookingRepo.UpdateRoom(ctx, targetBooking.ID, req.RoomID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to accept roommate request: %w", err)
@@ -306,10 +333,36 @@ func (s *RequestService) AcceptRequest(ctx context.Context, requestID int64, use
 
 	updated, err := s.requestRepo.UpdateStatus(ctx, req.ID, models.RoommateRequestStatusAccepted)
 	if err != nil {
+		if rollbackErr := s.rollbackAcceptedRequestBookingChange(ctx, createdBooking, movedBookingID, originalRoomID); rollbackErr != nil {
+			return nil, fmt.Errorf("failed to accept roommate request: %w (rollback failed: %v)", err, rollbackErr)
+		}
 		return nil, fmt.Errorf("failed to accept roommate request: %w", err)
 	}
 
 	return updated, nil
+}
+
+func (s *RequestService) rollbackAcceptedRequestBookingChange(
+	ctx context.Context,
+	createdBooking *models.Booking,
+	movedBookingID int64,
+	originalRoomID int64,
+) error {
+	if createdBooking != nil {
+		_, err := s.bookingRepo.Cancel(ctx, createdBooking.ID)
+		if err != nil && !errors.Is(err, repository.ErrBookingNotFound) {
+			return fmt.Errorf("failed to rollback created booking %d: %w", createdBooking.ID, err)
+		}
+		return nil
+	}
+
+	if movedBookingID > 0 && originalRoomID > 0 {
+		if _, err := s.bookingRepo.UpdateRoom(ctx, movedBookingID, originalRoomID); err != nil {
+			return fmt.Errorf("failed to rollback moved booking %d to room %d: %w", movedBookingID, originalRoomID, err)
+		}
+	}
+
+	return nil
 }
 
 func (s *RequestService) DeclineRequest(ctx context.Context, requestID int64, userID int64) (*models.RoommateRequest, error) {

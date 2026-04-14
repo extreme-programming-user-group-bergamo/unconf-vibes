@@ -68,13 +68,25 @@ func (s *SendGridSender) Send(ctx context.Context, message Message) error {
 			"name":  message.To[i].Name,
 		})
 	}
+	bcc := make([]map[string]string, 0, len(message.BCC))
+	for i := range message.BCC {
+		bcc = append(bcc, map[string]string{
+			"email": message.BCC[i].Email,
+			"name":  message.BCC[i].Name,
+		})
+	}
+
+	personalization := map[string]any{
+		"to":      to,
+		"subject": message.Subject,
+	}
+	if len(bcc) > 0 {
+		personalization["bcc"] = bcc
+	}
 
 	payload := map[string]any{
 		"personalizations": []any{
-			map[string]any{
-				"to":      to,
-				"subject": message.Subject,
-			},
+			personalization,
 		},
 		"from": map[string]string{
 			"email": message.From.Email,

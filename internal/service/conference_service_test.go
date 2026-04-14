@@ -72,6 +72,10 @@ func (m *mockConferenceOrganizerRepository) GetByConferenceAndUser(context.Conte
 	panic("not implemented")
 }
 
+func (m *mockConferenceOrganizerRepository) ListEmailsByConference(context.Context, int64) ([]string, error) {
+	return []string{}, nil
+}
+
 func (m *mockConferenceOrganizerRepository) RemoveByConferenceAndUser(context.Context, int64, int64) error {
 	panic("not implemented")
 }

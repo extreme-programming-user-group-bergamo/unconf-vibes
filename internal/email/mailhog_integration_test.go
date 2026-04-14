@@ -42,6 +42,7 @@ func TestMailHog_NewBookingRenderAndSend(t *testing.T) {
 		[]Address{{Email: getEnvOrDefault("UNCONF_MAILHOG_TO", "hotel@example.test")}},
 		TemplateData{
 			GuestName:       "MailHog Test Guest",
+			GuestEmail:      "mailhog-guest@example.test",
 			RoomNumber:      "901",
 			StartDate:       "2026-05-10",
 			EndDate:         "2026-05-12",

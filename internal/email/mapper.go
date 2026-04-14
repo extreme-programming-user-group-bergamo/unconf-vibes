@@ -43,6 +43,7 @@ func MapBookingTemplateData(source BookingTemplateSource) (TemplateData, error) 
 
 	data := TemplateData{
 		GuestName:       guestName,
+		GuestEmail:      fallbackGuestEmail(source.Guest.Email),
 		RoomNumber:      strings.TrimSpace(source.Room.RoomNumber),
 		StartDate:       source.Conference.StartDate.Format("2006-01-02"),
 		EndDate:         source.Conference.EndDate.Format("2006-01-02"),
@@ -53,4 +54,13 @@ func MapBookingTemplateData(source BookingTemplateSource) (TemplateData, error) 
 	}
 
 	return data, nil
+}
+
+func fallbackGuestEmail(email string) string {
+	trimmed := strings.TrimSpace(email)
+	if trimmed == "" {
+		return "Not provided"
+	}
+
+	return trimmed
 }

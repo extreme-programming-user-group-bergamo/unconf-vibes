@@ -17,6 +17,7 @@ const (
 
 type TemplateData struct {
 	GuestName       string
+	GuestEmail      string
 	RoomNumber      string
 	StartDate       string
 	EndDate         string
@@ -26,6 +27,9 @@ type TemplateData struct {
 func (d TemplateData) Validate() error {
 	if strings.TrimSpace(d.GuestName) == "" {
 		return fmt.Errorf("guest name is required")
+	}
+	if strings.TrimSpace(d.GuestEmail) == "" {
+		return fmt.Errorf("guest email is required")
 	}
 	if strings.TrimSpace(d.RoomNumber) == "" {
 		return fmt.Errorf("room number is required")
@@ -89,6 +93,7 @@ func (a Address) Validate() error {
 type Message struct {
 	From        Address
 	To          []Address
+	BCC         []Address
 	Subject     string
 	Body        string
 	ContentType string
@@ -104,6 +109,11 @@ func (m Message) Validate() error {
 	for i := range m.To {
 		if err := m.To[i].Validate(); err != nil {
 			return fmt.Errorf("invalid recipient %d: %w", i, err)
+		}
+	}
+	for i := range m.BCC {
+		if err := m.BCC[i].Validate(); err != nil {
+			return fmt.Errorf("invalid bcc recipient %d: %w", i, err)
 		}
 	}
 	if strings.TrimSpace(m.Subject) == "" {

@@ -102,6 +102,11 @@ func (s *SMTPSender) sendWithTLS(ctx context.Context, auth smtp.Auth, message Me
 			return fmt.Errorf("failed to set smtp recipient address: %w", err)
 		}
 	}
+	for i := range message.BCC {
+		if err := client.Rcpt(message.BCC[i].Email); err != nil {
+			return fmt.Errorf("failed to set smtp bcc recipient address: %w", err)
+		}
+	}
 
 	writer, err := client.Data()
 	if err != nil {
@@ -124,11 +129,14 @@ func (s *SMTPSender) sendWithTLS(ctx context.Context, auth smtp.Auth, message Me
 }
 
 func buildSMTPMessage(message Message) ([]byte, []string) {
-	recipients := make([]string, 0, len(message.To))
+	recipients := make([]string, 0, len(message.To)+len(message.BCC))
 	toHeaderValues := make([]string, 0, len(message.To))
 	for i := range message.To {
 		recipients = append(recipients, message.To[i].Email)
 		toHeaderValues = append(toHeaderValues, message.To[i].HeaderValue())
+	}
+	for i := range message.BCC {
+		recipients = append(recipients, message.BCC[i].Email)
 	}
 
 	contentType := strings.TrimSpace(message.ContentType)

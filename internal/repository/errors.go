@@ -16,6 +16,7 @@ var (
 	ErrRoomHasBookings             = errors.New("room has bookings")
 	ErrBookingNotFound             = errors.New("booking not found")
 	ErrBookingExists               = errors.New("booking already exists")
+	ErrEmailLogNotFound            = errors.New("email log not found")
 	ErrRoommateRequestNotFound     = errors.New("roommate request not found")
 	ErrRoommateRequestExists       = errors.New("roommate request already exists")
 )

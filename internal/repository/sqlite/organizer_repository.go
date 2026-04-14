@@ -61,6 +61,51 @@ func (r *OrganizerRepository) GetByConferenceAndUser(ctx context.Context, confer
 	return organizer, nil
 }
 
+func (r *OrganizerRepository) ListEmailsByConference(ctx context.Context, conferenceID int64) ([]string, error) {
+	query := `
+		SELECT u.email
+		FROM conference_organizers co
+		INNER JOIN users u ON u.id = co.user_id
+		WHERE co.conference_id = ?
+		  AND TRIM(u.email) != ''
+		ORDER BY
+			CASE co.role WHEN 'owner' THEN 0 ELSE 1 END,
+			LOWER(u.email),
+			u.id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, conferenceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list organizer emails by conference: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	emails := make([]string, 0)
+	seen := map[string]struct{}{}
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, fmt.Errorf("failed to scan organizer email row: %w", err)
+		}
+
+		trimmed := strings.TrimSpace(email)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		emails = append(emails, trimmed)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate organizer email rows: %w", err)
+	}
+
+	return emails, nil
+}
+
 func (r *OrganizerRepository) RemoveByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) error {
 	query := `
 		DELETE FROM conference_organizers

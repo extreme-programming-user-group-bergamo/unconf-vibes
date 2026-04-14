@@ -1,0 +1,68 @@
+schema: 1
+story: '5.6'
+story_title: 'Story 5.6: Automated Hotel Email on Booking'
+gate: PASS
+status_reason: 'Compensation rollback for AcceptRequest is correctly implemented and covered: created bookings are canceled, moved bookings are restored, and notifier failures do not block request acceptance.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-14T00:00:00Z'
+quality_score: 97
+expires: '2026-04-28T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 13
+    suites:
+      - 'internal/service/hotel_email_service.go'
+      - 'internal/service/hotel_email_service_test.go'
+      - 'internal/service/booking_service.go'
+      - 'internal/service/booking_service_test.go'
+      - 'internal/service/request_service.go'
+      - 'internal/service/request_service_test.go'
+      - 'internal/email/mapper.go'
+      - 'internal/email/mapper_test.go'
+      - 'internal/email/smtp_sender.go'
+      - 'internal/email/sendgrid_sender.go + sendgrid_sender_test.go'
+      - 'internal/email/mailgun_sender.go + mailgun_sender_test.go'
+      - 'internal/repository/sqlite/email_log_repository.go + email_log_repository_test.go'
+      - 'migrations/9_email_logs.up.sql + 9_email_logs.down.sql'
+  tests_executed:
+    - 'go test ./internal/service -run TestRequestService_AcceptRequest -count=1'
+    - 'go test ./internal/service ./internal/email ./internal/repository/sqlite -count=1'
+    - 'go test ./... -count=1'
+    - 'make lint'
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7]
+    ac_gaps: []
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 0
+  recommendations:
+    must_fix: []
+    monitor: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'BCC recipients are passed separately in SMTP envelope and provider payloads, avoiding visible To disclosure.'
+  performance:
+    status: PASS
+    notes: 'Retry is bounded by maxAttempts; default runtime wiring uses 3 attempts.'
+  reliability:
+    status: PASS
+    notes: 'Notifier failures in request acceptance are now non-fatal, retry behavior is bounded, and retry/audit failures are decoupled from delivery outcome.'
+  maintainability:
+    status: PASS
+    notes: 'Email behavior is isolated behind HotelEmailNotifier and repository abstractions with focused tests.'
+
+recommendations:
+  immediate: []
+  future: []

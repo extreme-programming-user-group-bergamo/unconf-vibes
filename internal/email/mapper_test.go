@@ -30,6 +30,7 @@ func TestMapBookingTemplateData_MapsFields(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Grace Hopper", data.GuestName)
+	assert.Equal(t, "Not provided", data.GuestEmail)
 	assert.Equal(t, "307", data.RoomNumber)
 	assert.Equal(t, "2026-05-20", data.StartDate)
 	assert.Equal(t, "2026-05-22", data.EndDate)
@@ -51,8 +52,10 @@ func TestMapBookingTemplateData_DefaultsSpecialRequests(t *testing.T) {
 		},
 		Guest: &models.User{
 			DisplayName: "Linus Torvalds",
+			Email:       "linus@example.com",
 		},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "None", data.SpecialRequests)
+	assert.Equal(t, "linus@example.com", data.GuestEmail)
 }

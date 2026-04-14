@@ -30,6 +30,10 @@ func NewService(renderer Renderer, sender Sender, from Address) (*Service, error
 }
 
 func (s *Service) ComposeBookingMessage(templateType TemplateType, recipients []Address, data TemplateData) (Message, error) {
+	return s.ComposeBookingMessageWithBCC(templateType, recipients, nil, data)
+}
+
+func (s *Service) ComposeBookingMessageWithBCC(templateType TemplateType, recipients []Address, bcc []Address, data TemplateData) (Message, error) {
 	rendered, err := s.renderer.Render(templateType, data)
 	if err != nil {
 		return Message{}, fmt.Errorf("failed to compose booking email: %w", err)
@@ -38,6 +42,7 @@ func (s *Service) ComposeBookingMessage(templateType TemplateType, recipients []
 	message := Message{
 		From:        s.from,
 		To:          recipients,
+		BCC:         bcc,
 		Subject:     rendered.Subject,
 		Body:        rendered.Body,
 		ContentType: DefaultContentType(),
@@ -50,12 +55,24 @@ func (s *Service) ComposeBookingMessage(templateType TemplateType, recipients []
 }
 
 func (s *Service) SendBookingEmail(ctx context.Context, templateType TemplateType, recipients []Address, data TemplateData) error {
-	message, err := s.ComposeBookingMessage(templateType, recipients, data)
+	return s.SendBookingEmailWithBCC(ctx, templateType, recipients, nil, data)
+}
+
+func (s *Service) SendBookingEmailWithBCC(ctx context.Context, templateType TemplateType, recipients []Address, bcc []Address, data TemplateData) error {
+	message, err := s.ComposeBookingMessageWithBCC(templateType, recipients, bcc, data)
 	if err != nil {
 		return err
 	}
-	if err := s.sender.Send(ctx, message); err != nil {
+	if err := s.Send(ctx, message); err != nil {
 		return fmt.Errorf("failed to send booking email: %w", err)
 	}
+	return nil
+}
+
+func (s *Service) Send(ctx context.Context, message Message) error {
+	if err := s.sender.Send(ctx, message); err != nil {
+		return fmt.Errorf("failed to send email message: %w", err)
+	}
+
 	return nil
 }

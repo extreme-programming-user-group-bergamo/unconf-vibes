@@ -31,6 +31,7 @@ type ConferenceRepository interface {
 type ConferenceOrganizerRepository interface {
 	Add(ctx context.Context, organizer *models.ConferenceOrganizer) (*models.ConferenceOrganizer, error)
 	GetByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) (*models.ConferenceOrganizer, error)
+	ListEmailsByConference(ctx context.Context, conferenceID int64) ([]string, error)
 	RemoveByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) error
 	IsOrganizer(ctx context.Context, conferenceID int64, userID int64) (bool, error)
 	IsOrganizerForAnyConference(ctx context.Context, userID int64) (bool, error)
@@ -58,4 +59,9 @@ type RoommateRequestRepository interface {
 	GetByID(ctx context.Context, id int64) (*models.RoommateRequest, error)
 	ListByUser(ctx context.Context, userID int64) ([]*models.RoommateRequest, error)
 	UpdateStatus(ctx context.Context, id int64, status models.RoommateRequestStatus) (*models.RoommateRequest, error)
+}
+
+type EmailLogRepository interface {
+	Create(ctx context.Context, log *models.EmailLog) (*models.EmailLog, error)
+	ListByBookingID(ctx context.Context, bookingID int64) ([]*models.EmailLog, error)
 }

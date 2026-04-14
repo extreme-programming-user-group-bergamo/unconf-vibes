@@ -25,6 +25,7 @@ type BookingService struct {
 	roomRepo    repository.RoomRepository
 	confRepo    repository.ConferenceRepository
 	userRepo    repository.UserRepository
+	notifier    HotelEmailNotifier
 }
 
 type BookingRoomResponse struct {
@@ -71,12 +72,19 @@ func NewBookingService(
 	roomRepo repository.RoomRepository,
 	confRepo repository.ConferenceRepository,
 	userRepo repository.UserRepository,
+	notifier ...HotelEmailNotifier,
 ) *BookingService {
+	var hotelNotifier HotelEmailNotifier
+	if len(notifier) > 0 {
+		hotelNotifier = notifier[0]
+	}
+
 	return &BookingService{
 		bookingRepo: bookingRepo,
 		roomRepo:    roomRepo,
 		confRepo:    confRepo,
 		userRepo:    userRepo,
+		notifier:    hotelNotifier,
 	}
 }
 
@@ -139,6 +147,16 @@ func (s *BookingService) CancelBooking(ctx context.Context, userID int64, bookin
 			return nil, fmt.Errorf("failed to cancel booking: %w", ErrBookingNotFound)
 		}
 		return nil, fmt.Errorf("failed to cancel booking transactionally: %w", err)
+	}
+
+	if s.notifier != nil {
+		if notifyErr := s.notifier.NotifyBookingCancelled(ctx, cancelledBooking); notifyErr != nil {
+			slog.Error("failed to send hotel cancellation email",
+				"error", notifyErr,
+				"booking_id", cancelledBooking.ID,
+				"conference_id", cancelledBooking.ConferenceID,
+			)
+		}
 	}
 
 	roommates, err := s.bookingRepo.ListByRoom(ctx, cancelledBooking.RoomID)

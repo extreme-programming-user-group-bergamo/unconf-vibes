@@ -41,12 +41,16 @@ func TestMailgunSender_Send(t *testing.T) {
 		},
 		Subject: "Subject",
 		Body:    "Body",
+		BCC: []Address{
+			{Email: "owner@example.com", Name: "Owner"},
+		},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "api", authUser)
 	assert.Equal(t, "mg-test-key", authPass)
 	assert.Contains(t, formValues.Get("to"), "\"Primary Recipient\" <to@example.com>")
 	assert.Contains(t, formValues.Get("to"), "\"Doe, John\" <john@example.com>")
+	assert.Contains(t, formValues.Get("bcc"), "\"Owner\" <owner@example.com>")
 	assert.NotContains(t, formValues.Get("to"), "\r")
 	assert.NotContains(t, formValues.Get("to"), "\n")
 }

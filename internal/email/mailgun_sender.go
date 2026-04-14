@@ -71,6 +71,13 @@ func (s *MailgunSender) Send(ctx context.Context, message Message) error {
 		toValues = append(toValues, message.To[i].HeaderValue())
 	}
 	form.Set("to", strings.Join(toValues, ","))
+	if len(message.BCC) > 0 {
+		bccValues := make([]string, 0, len(message.BCC))
+		for i := range message.BCC {
+			bccValues = append(bccValues, message.BCC[i].HeaderValue())
+		}
+		form.Set("bcc", strings.Join(bccValues, ","))
+	}
 	form.Set("subject", message.Subject)
 
 	if strings.HasPrefix(normalizeContentType(message.ContentType), "text/html") {

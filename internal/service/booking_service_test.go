@@ -87,6 +87,22 @@ type mockBookingServiceUserRepo struct {
 	getByIDFn func(context.Context, int64) (*models.User, error)
 }
 
+type mockBookingNotifier struct {
+	cancelFn func(context.Context, *models.Booking) error
+}
+
+func (m *mockBookingNotifier) NotifyBookingCreated(context.Context, *models.Booking) error {
+	return nil
+}
+
+func (m *mockBookingNotifier) NotifyBookingCancelled(ctx context.Context, booking *models.Booking) error {
+	if m.cancelFn == nil {
+		return nil
+	}
+
+	return m.cancelFn(ctx, booking)
+}
+
 func (m *mockBookingServiceUserRepo) Create(context.Context, *models.User) (*models.User, error) {
 	panic("not implemented")
 }
@@ -136,6 +152,12 @@ func TestBookingService_CancelBooking_Success(t *testing.T) {
 				return &models.User{ID: id, DisplayName: "Roommate"}, nil
 			},
 		},
+		&mockBookingNotifier{
+			cancelFn: func(_ context.Context, booking *models.Booking) error {
+				assert.Equal(t, int64(1), booking.ID)
+				return nil
+			},
+		},
 	)
 
 	result, err := svc.CancelBooking(context.Background(), 7, 1)
@@ -147,6 +169,53 @@ func TestBookingService_CancelBooking_Success(t *testing.T) {
 	assert.Equal(t, 1, result.Room.SpotsTaken)
 	assert.Equal(t, 1, result.Room.SpotsAvailable)
 	assert.Len(t, result.Roommates, 1)
+}
+
+func TestBookingService_CancelBooking_NotificationFailureDoesNotFailCancellation(t *testing.T) {
+	now := time.Now().UTC()
+	cancelledAt := now.Add(time.Minute)
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Booking, error) {
+				return &models.Booking{ID: id, UserID: 7, RoomID: 11, ConferenceID: 3, Status: models.BookingStatusConfirmed, CreatedAt: now}, nil
+			},
+			cancelFn: func(_ context.Context, _ int64) (*models.Booking, error) {
+				return nil, errors.New("unused")
+			},
+			cancelAndRequestsTxnFn: func(_ context.Context, bookingID, userID int64) (*models.Booking, int64, error) {
+				return &models.Booking{ID: bookingID, UserID: userID, RoomID: 11, ConferenceID: 3, Status: models.BookingStatusCancelled, CreatedAt: now, CancelledAt: &cancelledAt}, 0, nil
+			},
+			listByRoom: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{}, nil
+			},
+			listByUser: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, RoomNumber: "204", RoomType: "double", PricePerNight: 120, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{
+			listFn: func(_ context.Context) ([]*models.Conference, error) {
+				return []*models.Conference{{ID: 3, Slug: "socrates-26", Name: "SoCraTes", StartDate: now, EndDate: now.Add(24 * time.Hour)}}, nil
+			},
+		},
+		&mockBookingServiceUserRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id, DisplayName: "Roommate"}, nil
+			},
+		},
+		&mockBookingNotifier{
+			cancelFn: func(_ context.Context, _ *models.Booking) error {
+				return errors.New("smtp down")
+			},
+		},
+	)
+
+	result, err := svc.CancelBooking(context.Background(), 7, 1)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "cancelled", result.Status)
 }
 
 func TestBookingService_CancelBooking_Forbidden(t *testing.T) {

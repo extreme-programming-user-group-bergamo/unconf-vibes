@@ -11,6 +11,7 @@ func TestTemplateRenderer_Render_AllBookingTemplates(t *testing.T) {
 	renderer := NewTemplateRenderer()
 	data := TemplateData{
 		GuestName:       "Ada Lovelace",
+		GuestEmail:      "ada@example.com",
 		RoomNumber:      "204",
 		StartDate:       "2026-05-20",
 		EndDate:         "2026-05-22",

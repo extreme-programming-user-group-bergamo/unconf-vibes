@@ -34,6 +34,10 @@ func (m *mockOrganizerRepository) GetByConferenceAndUser(ctx context.Context, co
 	return nil, repository.ErrConferenceOrganizerNotFound
 }
 
+func (m *mockOrganizerRepository) ListEmailsByConference(context.Context, int64) ([]string, error) {
+	return []string{}, nil
+}
+
 func (m *mockOrganizerRepository) RemoveByConferenceAndUser(ctx context.Context, conferenceID int64, userID int64) error {
 	if m.removeByConferenceAndUserFn != nil {
 		return m.removeByConferenceAndUserFn(ctx, conferenceID, userID)

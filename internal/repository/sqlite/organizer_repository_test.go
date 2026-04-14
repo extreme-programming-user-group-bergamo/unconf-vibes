@@ -214,3 +214,53 @@ func TestOrganizerRepository_IsOrganizerForAnyConference(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
+
+func TestOrganizerRepository_ListEmailsByConference(t *testing.T) {
+	db := setupTestDB(t)
+	confRepo := NewConferenceRepository(db)
+	userRepo := NewUserRepository(db)
+	repo := NewOrganizerRepository(db)
+
+	conf, err := confRepo.Create(context.Background(), &models.Conference{
+		Slug:        "org-email-list",
+		Name:        "Org Email List",
+		Description: "desc",
+		Location:    "City",
+		StartDate:   time.Now().Add(24 * time.Hour),
+		EndDate:     time.Now().Add(48 * time.Hour),
+		Capacity:    100,
+	})
+	require.NoError(t, err)
+
+	owner, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:    "owner-gh",
+		Email:       "owner@example.com",
+		DisplayName: "Owner",
+	})
+	require.NoError(t, err)
+	admin, err := userRepo.Create(context.Background(), &models.User{
+		GitHubID:    "admin-gh",
+		Email:       "admin@example.com",
+		DisplayName: "Admin",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.Add(context.Background(), &models.ConferenceOrganizer{
+		ConferenceID: conf.ID,
+		UserID:       admin.ID,
+		Role:         models.ConferenceOrganizerRoleAdmin,
+	})
+	require.NoError(t, err)
+	_, err = repo.Add(context.Background(), &models.ConferenceOrganizer{
+		ConferenceID: conf.ID,
+		UserID:       owner.ID,
+		Role:         models.ConferenceOrganizerRoleOwner,
+	})
+	require.NoError(t, err)
+
+	emails, err := repo.ListEmailsByConference(context.Background(), conf.ID)
+	require.NoError(t, err)
+	require.Len(t, emails, 2)
+	assert.Equal(t, "owner@example.com", emails[0])
+	assert.Equal(t, "admin@example.com", emails[1])
+}

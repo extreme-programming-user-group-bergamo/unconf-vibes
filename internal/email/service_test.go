@@ -25,6 +25,7 @@ func TestService_ComposeAndSendBookingEmail(t *testing.T) {
 
 	err = svc.SendBookingEmail(context.Background(), TemplateTypeNewBooking, []Address{{Email: "to@example.com"}}, TemplateData{
 		GuestName:       "Test Guest",
+		GuestEmail:      "guest@example.com",
 		RoomNumber:      "101",
 		StartDate:       "2026-01-01",
 		EndDate:         "2026-01-02",

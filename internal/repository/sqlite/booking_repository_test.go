@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/katurdays/unconf/internal/models"
@@ -11,6 +12,7 @@ import (
 )
 
 type bookingTestFixture struct {
+	db          *sql.DB
 	confRepo    *ConferenceRepository
 	roomRepo    *RoomRepository
 	bookingRepo *BookingRepository
@@ -43,6 +45,7 @@ func setupBookingFixture(t *testing.T) *bookingTestFixture {
 	require.NoError(t, err)
 
 	return &bookingTestFixture{
+		db:          db,
 		confRepo:    confRepo,
 		roomRepo:    roomRepo,
 		bookingRepo: bookingRepo,

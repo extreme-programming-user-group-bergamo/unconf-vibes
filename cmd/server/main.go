@@ -19,6 +19,7 @@ import (
 	"github.com/katurdays/unconf/internal/api/handlers"
 	"github.com/katurdays/unconf/internal/auth"
 	"github.com/katurdays/unconf/internal/config"
+	"github.com/katurdays/unconf/internal/email"
 	"github.com/katurdays/unconf/internal/repository/sqlite"
 	"github.com/katurdays/unconf/internal/service"
 )
@@ -87,6 +88,7 @@ func main() {
 	roomRepo := sqlite.NewRoomRepository(db)
 	bookingRepo := sqlite.NewBookingRepository(db)
 	requestRepo := sqlite.NewRoommateRequestRepository(db)
+	emailLogRepo := sqlite.NewEmailLogRepository(db)
 
 	conferenceService := service.NewConferenceService(conferenceRepo, bookingRepo, organizerRepo)
 	conferenceHandler := handlers.NewConferenceHandler(conferenceService)
@@ -97,9 +99,11 @@ func main() {
 	roomHandler := handlers.NewRoomHandler(roomService)
 	attendeeService := service.NewAttendeeService(conferenceRepo, organizerRepo, bookingRepo, roomRepo, userRepository)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeService)
-	bookingService := service.NewBookingService(bookingRepo, roomRepo, conferenceRepo, userRepository)
+	hotelEmailNotifier := buildHotelEmailNotifier(cfg, conferenceRepo, roomRepo, userRepository, organizerRepo, emailLogRepo)
+
+	bookingService := service.NewBookingService(bookingRepo, roomRepo, conferenceRepo, userRepository, hotelEmailNotifier)
 	bookingHandler := handlers.NewBookingHandler(bookingService)
-	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepository)
+	requestService := service.NewRequestService(requestRepo, bookingRepo, roomRepo, userRepository, hotelEmailNotifier)
 	requestHandler := handlers.NewRequestHandler(requestService)
 
 	router := api.NewRouter(authHandler, tokenService, userHandler, conferenceHandler, organizerHandler, organizerService, roomHandler, attendeeHandler, bookingHandler, requestHandler)
@@ -138,6 +142,75 @@ func main() {
 		slog.Info("server stopped cleanly")
 		os.Exit(0)
 	}
+}
+
+func buildHotelEmailNotifier(
+	cfg *config.Config,
+	confRepo *sqlite.ConferenceRepository,
+	roomRepo *sqlite.RoomRepository,
+	userRepo *sqlite.UserRepository,
+	organizerRepo *sqlite.OrganizerRepository,
+	emailLogRepo *sqlite.EmailLogRepository,
+) service.HotelEmailNotifier {
+	renderer := email.NewTemplateRenderer()
+	sender, err := email.NewSender(email.ProviderConfig{
+		Provider: cfg.GetEmailProvider(),
+		SMTP: email.SMTPConfig{
+			Host:     cfg.GetSMTPHost(),
+			Port:     cfg.GetSMTPPort(),
+			Username: cfg.GetSMTPUsername(),
+			Password: cfg.GetSMTPPassword(),
+			UseTLS:   cfg.GetSMTPUseTLS(),
+		},
+		SendGrid: email.SendGridConfig{
+			APIKey:  cfg.GetSendGridAPIKey(),
+			BaseURL: cfg.GetSendGridBaseURL(),
+		},
+		Mailgun: email.MailgunConfig{
+			APIKey:  cfg.GetMailgunAPIKey(),
+			Domain:  cfg.GetMailgunDomain(),
+			BaseURL: cfg.GetMailgunBaseURL(),
+		},
+	})
+	if err != nil {
+		slog.Warn("hotel email notifier disabled: sender init failed", "error", err)
+		return nil
+	}
+
+	fromEmail := strings.TrimSpace(cfg.GetEmailFromAddress())
+	if fromEmail == "" {
+		fromEmail = "noreply@unconf.local"
+	}
+	fromName := strings.TrimSpace(cfg.GetEmailFromName())
+	if fromName == "" {
+		fromName = "UNCONF"
+	}
+
+	emailSvc, err := email.NewService(renderer, sender, email.Address{
+		Email: fromEmail,
+		Name:  fromName,
+	})
+	if err != nil {
+		slog.Warn("hotel email notifier disabled: email service init failed", "error", err)
+		return nil
+	}
+
+	notifier, err := service.NewHotelEmailService(
+		emailSvc,
+		confRepo,
+		roomRepo,
+		userRepo,
+		organizerRepo,
+		emailLogRepo,
+		3,
+		0,
+	)
+	if err != nil {
+		slog.Warn("hotel email notifier disabled: hotel email service init failed", "error", err)
+		return nil
+	}
+
+	return notifier
 }
 
 func initializeDatabase(ctx context.Context, cfg *config.Config) (*sql.DB, error) {

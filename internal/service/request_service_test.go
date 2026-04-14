@@ -37,6 +37,7 @@ type mockRequestBookingRepository struct {
 	listByRoomFn                   func(ctx context.Context, roomID int64) ([]*models.Booking, error)
 	getActiveByUserAndConferenceFn func(ctx context.Context, userID, conferenceID int64) (*models.Booking, error)
 	updateRoomFn                   func(ctx context.Context, bookingID, roomID int64) (*models.Booking, error)
+	cancelFn                       func(ctx context.Context, bookingID int64) (*models.Booking, error)
 }
 
 func (m *mockRequestBookingRepository) Create(ctx context.Context, booking *models.Booking) (*models.Booking, error) {
@@ -51,6 +52,12 @@ func (m *mockRequestBookingRepository) GetActiveByUserAndConference(ctx context.
 func (m *mockRequestBookingRepository) UpdateRoom(ctx context.Context, bookingID, roomID int64) (*models.Booking, error) {
 	return m.updateRoomFn(ctx, bookingID, roomID)
 }
+func (m *mockRequestBookingRepository) Cancel(ctx context.Context, bookingID int64) (*models.Booking, error) {
+	if m.cancelFn != nil {
+		return m.cancelFn(ctx, bookingID)
+	}
+	return nil, errors.New("cancelFn not implemented")
+}
 
 type mockRequestRoomRepository struct {
 	getByIDFn func(ctx context.Context, id int64) (*models.Room, error)
@@ -63,6 +70,22 @@ func (m *mockRequestRoomRepository) GetByID(ctx context.Context, id int64) (*mod
 type mockRequestUserRepository struct {
 	getByIDFn       func(ctx context.Context, id int64) (*models.User, error)
 	getByGitHubIDFn func(ctx context.Context, githubID string) (*models.User, error)
+}
+
+type mockRequestNotifier struct {
+	createFn func(context.Context, *models.Booking) error
+}
+
+func (m *mockRequestNotifier) NotifyBookingCreated(ctx context.Context, booking *models.Booking) error {
+	if m.createFn == nil {
+		return nil
+	}
+
+	return m.createFn(ctx, booking)
+}
+
+func (m *mockRequestNotifier) NotifyBookingCancelled(context.Context, *models.Booking) error {
+	return nil
 }
 
 func (m *mockRequestUserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
@@ -173,6 +196,12 @@ func TestRequestService_AcceptRequest_CreatesTargetBookingWhenMissing(t *testing
 			},
 		},
 		&mockRequestUserRepository{},
+		&mockRequestNotifier{
+			createFn: func(_ context.Context, booking *models.Booking) error {
+				assert.Equal(t, int64(22), booking.UserID)
+				return nil
+			},
+		},
 	)
 
 	updated, err := svc.AcceptRequest(context.Background(), 55, 22)
@@ -180,6 +209,172 @@ func TestRequestService_AcceptRequest_CreatesTargetBookingWhenMissing(t *testing
 	assert.True(t, createCalled)
 	assert.True(t, updateCalled)
 	assert.Equal(t, models.RoommateRequestStatusAccepted, updated.Status)
+}
+
+func TestRequestService_AcceptRequest_SucceedsWhenHotelNotificationFails(t *testing.T) {
+	now := time.Now().UTC()
+	updateCalled := false
+	svc := NewRequestService(
+		&mockRequestRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.RoommateRequest, error) {
+				return &models.RoommateRequest{
+					ID:          55,
+					RequesterID: 11,
+					TargetID:    22,
+					RoomID:      33,
+					Status:      models.RoommateRequestStatusPending,
+					CreatedAt:   now,
+				}, nil
+			},
+			updateStatusFn: func(_ context.Context, id int64, status models.RoommateRequestStatus) (*models.RoommateRequest, error) {
+				updateCalled = true
+				return &models.RoommateRequest{ID: id, Status: status}, nil
+			},
+		},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{UserID: 11, RoomID: 33, ConferenceID: 44}}, nil
+			},
+			getActiveByUserAndConferenceFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, repository.ErrBookingNotFound
+			},
+			createFn: func(_ context.Context, booking *models.Booking) (*models.Booking, error) {
+				booking.ID = 99
+				return booking, nil
+			},
+			updateRoomFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, errors.New("should not update room")
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 33, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{},
+		&mockRequestNotifier{
+			createFn: func(_ context.Context, _ *models.Booking) error {
+				return errors.New("email provider down")
+			},
+		},
+	)
+
+	updated, err := svc.AcceptRequest(context.Background(), 55, 22)
+	require.NoError(t, err)
+	assert.True(t, updateCalled)
+	assert.Equal(t, models.RoommateRequestStatusAccepted, updated.Status)
+}
+
+func TestRequestService_AcceptRequest_RollsBackCreatedBookingWhenStatusUpdateFails(t *testing.T) {
+	now := time.Now().UTC()
+	cancelCalled := false
+
+	svc := NewRequestService(
+		&mockRequestRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.RoommateRequest, error) {
+				return &models.RoommateRequest{
+					ID:          55,
+					RequesterID: 11,
+					TargetID:    22,
+					RoomID:      33,
+					Status:      models.RoommateRequestStatusPending,
+					CreatedAt:   now,
+				}, nil
+			},
+			updateStatusFn: func(_ context.Context, _ int64, _ models.RoommateRequestStatus) (*models.RoommateRequest, error) {
+				return nil, errors.New("update failed")
+			},
+		},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{UserID: 11, RoomID: 33, ConferenceID: 44}}, nil
+			},
+			getActiveByUserAndConferenceFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, repository.ErrBookingNotFound
+			},
+			createFn: func(_ context.Context, booking *models.Booking) (*models.Booking, error) {
+				booking.ID = 99
+				return booking, nil
+			},
+			updateRoomFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, errors.New("should not update room")
+			},
+			cancelFn: func(_ context.Context, bookingID int64) (*models.Booking, error) {
+				cancelCalled = true
+				assert.Equal(t, int64(99), bookingID)
+				return &models.Booking{ID: bookingID, Status: models.BookingStatusCancelled}, nil
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 33, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{},
+		nil,
+	)
+
+	_, err := svc.AcceptRequest(context.Background(), 55, 22)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to accept roommate request")
+	assert.True(t, cancelCalled)
+}
+
+func TestRequestService_AcceptRequest_RollsBackMovedBookingWhenStatusUpdateFails(t *testing.T) {
+	now := time.Now().UTC()
+	updateRoomCalls := make([]int64, 0, 2)
+
+	svc := NewRequestService(
+		&mockRequestRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.RoommateRequest, error) {
+				return &models.RoommateRequest{
+					ID:          55,
+					RequesterID: 11,
+					TargetID:    22,
+					RoomID:      33,
+					Status:      models.RoommateRequestStatusPending,
+					CreatedAt:   now,
+				}, nil
+			},
+			updateStatusFn: func(_ context.Context, _ int64, _ models.RoommateRequestStatus) (*models.RoommateRequest, error) {
+				return nil, errors.New("update failed")
+			},
+		},
+		&mockRequestBookingRepository{
+			listByRoomFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{UserID: 11, RoomID: 33, ConferenceID: 44}}, nil
+			},
+			getActiveByUserAndConferenceFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return &models.Booking{
+					ID:           77,
+					UserID:       22,
+					ConferenceID: 44,
+					RoomID:       50,
+					Status:       models.BookingStatusRequested,
+				}, nil
+			},
+			createFn: func(_ context.Context, _ *models.Booking) (*models.Booking, error) {
+				return nil, errors.New("should not create booking")
+			},
+			updateRoomFn: func(_ context.Context, bookingID, roomID int64) (*models.Booking, error) {
+				assert.Equal(t, int64(77), bookingID)
+				updateRoomCalls = append(updateRoomCalls, roomID)
+				return &models.Booking{ID: bookingID, RoomID: roomID}, nil
+			},
+		},
+		&mockRequestRoomRepository{
+			getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) {
+				return &models.Room{ID: 33, Capacity: 2}, nil
+			},
+		},
+		&mockRequestUserRepository{},
+		nil,
+	)
+
+	_, err := svc.AcceptRequest(context.Background(), 55, 22)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to accept roommate request")
+	assert.Equal(t, []int64{33, 50}, updateRoomCalls)
 }
 
 func TestRequestService_DeclineRequest_UpdatesStatus(t *testing.T) {
