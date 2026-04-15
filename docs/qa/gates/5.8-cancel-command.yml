@@ -1,0 +1,59 @@
+schema: 1
+story: '5.8'
+story_title: 'Story 5.8: Cancel Command'
+gate: PASS
+status_reason: 'Story 5.8 meets ACs with explicit irreversible confirmation by default, --yes bypass, API-mediated cancellation, roommate preservation, and verified no-active-booking state after cancellation.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-15T00:25:48Z'
+quality_score: 96
+expires: '2026-04-29T00:25:48Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 3
+    suites:
+      - 'internal/cli/cancel.go'
+      - 'internal/cli/cancel_test.go'
+      - 'internal/api/routes_test.go'
+  tests_executed:
+    - 'make test'
+    - 'make lint'
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7]
+    ac_gaps: []
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 1
+  recommendations:
+    must_fix: []
+    monitor:
+      - 'TEST-5.8-001: Add an end-to-end CLI flow assertion chaining cancel -> status in one test to make AC7 validation explicit at the CLI UX level.'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Cancellation remains API-mediated and inherits auth/authorization checks with explicit forbidden/not-found handling.'
+  performance:
+    status: PASS
+    notes: 'No material performance risk introduced; changes are prompt copy and targeted regression assertions.'
+  reliability:
+    status: PASS
+    notes: 'Coverage includes confirm/abort/--yes/no-context/error-mapping and API post-cancel active-bookings emptiness.'
+  maintainability:
+    status: PASS
+    notes: 'Layer boundaries remain intact with focused tests in CLI and API integration suites.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add a direct integration-style CLI test proving `unconf status` output immediately after successful cancellation.'
+      refs: ['internal/cli/cancel_test.go', 'internal/cli/status_test.go']

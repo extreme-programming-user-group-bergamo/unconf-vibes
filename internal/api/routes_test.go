@@ -1520,6 +1520,18 @@ func TestDeleteBookings_CancelsBookingAndPreservesRoommate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.RoommateRequestStatusCancelled, updatedOutgoing.Status)
 
+	bookingsResp, err := http.NewRequest(http.MethodGet, srv.URL+"/bookings", nil)
+	require.NoError(t, err)
+	bookingsResp.Header.Set("Authorization", "Bearer "+token)
+	bookingsHTTPResp, err := http.DefaultClient.Do(bookingsResp)
+	require.NoError(t, err)
+	defer func() { _ = bookingsHTTPResp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, bookingsHTTPResp.StatusCode)
+
+	var activeBookings []map[string]interface{}
+	require.NoError(t, json.NewDecoder(bookingsHTTPResp.Body).Decode(&activeBookings))
+	assert.Empty(t, activeBookings)
+
 	roomResp, err := http.Get(srv.URL + "/conferences/conf-cancel/rooms")
 	require.NoError(t, err)
 	defer func() { _ = roomResp.Body.Close() }()

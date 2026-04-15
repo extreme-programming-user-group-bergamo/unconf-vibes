@@ -76,8 +76,42 @@ func TestCancelCmd_ConfirmsAndCancels(t *testing.T) {
 	assert.Empty(t, stderr)
 	assert.True(t, cancelCalled)
 	assert.Contains(t, stdout, "Cancel your booking in Room 204?")
+	assert.Contains(t, stdout, "This action is irreversible")
+	assert.Contains(t, stdout, "Type 'yes' or 'y' to continue [y/N]:")
 	assert.Contains(t, stdout, "Booking cancelled successfully")
 	assert.Contains(t, stdout, "roommates have been notified")
+}
+
+func TestCancelCmd_DeclinedConfirmationAborts(t *testing.T) {
+	cancelCalled := false
+	cmd := newCancelCmd(&mockCancelClient{
+		listFn: func(_ context.Context) ([]client.BookingResponse, error) {
+			return []client.BookingResponse{{ID: 9, ConferenceSlug: "socrates-26", Room: client.BookingRoomResponse{RoomNumber: "204"}}}, nil
+		},
+		cancelFn: func(_ context.Context, _ int64) (*client.BookingResponse, error) {
+			cancelCalled = true
+			return &client.BookingResponse{Status: "cancelled"}, nil
+		},
+	}, &mockCancelContextStore{
+		getActiveConferenceFn: func() (string, error) { return "socrates-26", nil },
+	})
+
+	stdout, stderr, err := executeCancelCmd(t, cmd, []string{}, "no\n")
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
+	assert.False(t, cancelCalled)
+	assert.Contains(t, stdout, "Cancellation aborted.")
+}
+
+func TestCancelCmd_NoActiveConferenceContext(t *testing.T) {
+	cmd := newCancelCmd(&mockCancelClient{}, &mockCancelContextStore{
+		getActiveConferenceFn: func() (string, error) { return "", nil },
+	})
+
+	stdout, stderr, err := executeCancelCmd(t, cmd, []string{}, "")
+	require.NoError(t, err)
+	assert.Empty(t, stdout)
+	assert.Contains(t, stderr, "No active conference context")
 }
 
 func TestCancelCmd_YesFlagSkipsConfirmation(t *testing.T) {

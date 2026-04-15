@@ -80,7 +80,11 @@ func newCancelCmd(cancelClient CancelClient, ctxStore CancelContextStore) *cobra
 }
 
 func promptCancelConfirmation(cmd *cobra.Command, roomNumber string) (bool, error) {
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Cancel your booking in Room %s? [y/N]: ", roomNumber)
+	_, _ = fmt.Fprintf(
+		cmd.OutOrStdout(),
+		"Cancel your booking in Room %s? This action is irreversible. Type 'yes' or 'y' to continue [y/N]: ",
+		roomNumber,
+	)
 
 	input, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 	if err != nil {
