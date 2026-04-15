@@ -40,6 +40,18 @@
 - **FR23**: The system shall support two visibility tiers: Public (name visible) and Private (anonymous to other attendees)
 - **FR24**: Organizers shall always be able to see all attendee information regardless of privacy setting
 
+## Implementation Status Snapshot (2026-04-15)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Authentication & Identity | Complete | Stories 1.1 through 1.9 are implemented, including auth middleware, user profile endpoints, current-session revoke, and automatic access-token refresh in the authenticated CLI client |
+| Conference Discovery & Context | Complete | Stories 2.1 through 2.5 are implemented across API, CLI, context storage, and profile configuration |
+| Room Exploration & Booking | Partially wired end-to-end | Room explorer TUI, booking wizard UI, direct CLI booking, room listing, booking service logic, and booking client support all exist, but the live server does not currently register `POST /bookings`, which blocks new bookings against a running API |
+| Social Features & Roommates | Complete | Attendee listing, roommate requests, booking cancellation, and roommate-departure handling are implemented |
+| Organizer Features & Hotel Automation | Complete | Conference create/edit, room management, organizer dashboard, CSV export, organizer ownership flows, and hotel email automation are implemented |
+
+Follow-on implementation stories added after the initial PRD draft: **1.8**, **1.9**, **5.8**, and **5.9**.
+
 ## Non-Functional Requirements
 
 ### Performance

@@ -101,4 +101,38 @@
 6. Subsequent commands can detect authenticated state
 7. `unconf logout` command removes stored credentials
 
+## Story 1.8: Auth Middleware & User Profile Endpoints
+
+**As an** authenticated user,
+**I want** protected API endpoints that validate my identity and expose my current profile,
+**so that** authenticated commands operate on server-trusted user state instead of local assumptions.
+
+**Acceptance Criteria:**
+1. Protected API routes validate PASETO access tokens and propagate authenticated user/session context through middleware
+2. `POST /auth/revoke`, `GET /users/me`, and `PUT /users/me` are available for current-session revocation and self-service profile management
+3. Authenticated CLI flows reuse these endpoints instead of reading identity directly from local state
+
+## Story 1.9: CLI Token Lifecycle & Authenticated Client
+
+**As an** authenticated user,
+**I want** the CLI to refresh expired access tokens automatically,
+**so that** normal usage does not require repeated manual logins.
+
+**Acceptance Criteria:**
+1. Authenticated API calls are routed through a shared authenticated client wrapper
+2. `POST /auth/refresh` rotates access and refresh tokens transparently after `401` responses
+3. Expired or revoked refresh sessions clear local credentials and return actionable re-authentication guidance
+
+## Story 1.10: Active Session Management
+
+**As an** authenticated user,
+**I want** to view and revoke my active sessions across devices,
+**so that** I can manage account access without having to rotate all credentials at once.
+
+**Acceptance Criteria:**
+1. `GET /auth/sessions` lists active sessions with device or client metadata, creation time, last-seen time, and a current-session flag
+2. `DELETE /auth/sessions/{session_id}` revokes a selected session and invalidates its token chain
+3. `POST /auth/revoke-others` revokes every session except the caller's current one
+4. Auth/session documentation is updated so the shipped surface and the documented surface stay aligned
+
 ---

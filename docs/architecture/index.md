@@ -87,7 +87,6 @@
     - [Checklist](./19-checklist-results.md#checklist)
     - [PRD Alignment](./19-checklist-results.md#prd-alignment)
     - [Risks & Mitigations](./19-checklist-results.md#risks-mitigations)
-  - [Next Steps](./next-steps.md)
   - [20. Glossary](./20-glossary.md)
     - [Domain Terms](./20-glossary.md#domain-terms)
     - [Technical Terms](./20-glossary.md#technical-terms)

@@ -91,4 +91,27 @@
 5. "No booking" message if not booked
 6. `--all` flag shows bookings across all conferences
 
+## Story 3.7: Booking Creation API Completion
+
+**As an** attendee,
+**I want** `unconf rooms` and `unconf book <room>` to complete booking creation against the live API,
+**so that** the core MVP booking journey works end-to-end instead of stopping at the client boundary.
+
+**Acceptance Criteria:**
+1. `POST /bookings` is registered in the live router and backed by a booking-creation handler
+2. Booking wizard and direct CLI booking both succeed against a running server
+3. Successful booking immediately updates `GET /bookings`, `unconf status`, room availability, and attendee-facing projections
+4. Existing conflict and not-found behavior (`room_full`, `already_booked`, invalid room) remains intact end-to-end
+
+## Story 3.8: Booking Lifecycle Smoke Coverage
+
+**As a** maintainer,
+**I want** repeatable smoke coverage for the primary booking lifecycle,
+**so that** future changes cannot silently break the attendee path after documentation says the feature is complete.
+
+**Acceptance Criteria:**
+1. A live-router integration path covers `login -> checkout -> rooms/book -> status -> cancel`
+2. Coverage exercises the real server composition instead of mocked booking clients alone
+3. Smoke-test expectations are documented in QA or release notes so they are repeatable before shipping
+
 ---

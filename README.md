@@ -8,6 +8,13 @@ UNCONF is a Go-based CLI + TUI application for unconference registration, room s
 - Tech stack centered on Go 1.24+, Gin, Cobra, Bubble Tea, and SQLite
 - Architecture and development standards are documented under `docs/`
 
+## Current Status
+
+- Core attendee flows are implemented: `login`, `logout`, `config`, `list`, `info`, `checkout`, `rooms`, `book`, `status`, `cancel`, `attendees`, `invite`, and `requests`.
+- Organizer flows are also implemented: `create`, `edit`, `rooms add|edit|remove|import`, `dashboard`, `export`, and organizer-assignment API endpoints.
+- Follow-on hardening stories were completed for auth/session lifecycle and status/cancel consistency.
+- Known release-readiness gap: the CLI, client, and TUI all submit bookings through `POST /bookings`, but the server currently registers only `GET /bookings` and `DELETE /bookings/{id}`. Existing bookings can still be listed, cancelled, exported, and used in attendee/request flows.
+
 ## Quick Start
 
 ```bash
@@ -15,11 +22,14 @@ make build
 ./bin/unconf
 ```
 
-Planned command examples:
+Implemented command examples:
 
 ```bash
 unconf login
-unconf help
+unconf checkout socrates-26
+unconf rooms
+unconf status
+unconf dashboard
 ```
 
 ## Development Setup

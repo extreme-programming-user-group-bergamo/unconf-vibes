@@ -2,40 +2,54 @@
 
 UNCONF uses a **RESTful API** with JSON payloads.
 
-**Base URL:** `https://api.unconf.dev/v1` (production)  
+**Default local base URL:** `http://localhost:8080`  
+**Production base URL:** deployment-specific  
 **Content-Type:** `application/json`  
-**Authentication:** Bearer token (PASETO) for protected endpoints
-**Token Profile:** PASETO `v4.local` with claims: `sub`, `role`, `conference_slug`, `iat`, `exp`
+**Authentication:** Bearer token (PASETO) for protected endpoints  
+**Token Profile:** PASETO `v4.local` with claims `iss`, `aud`, `sub`, `sid`, `iat`, `nbf`, `exp`, and `jti`
 
 ## 5.1 Endpoints Summary
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | /health | Health check | No |
-| POST | /auth/device | Initiate GitHub device flow | No |
-| POST | /auth/token | Exchange device code for token | No |
-| POST | /auth/refresh | Rotate access token | Yes |
-| POST | /auth/revoke | Revoke current token/session | Yes |
-| GET | /auth/sessions | List active sessions for current user | Yes |
-| DELETE | /auth/sessions/{session_id} | Revoke specific session | Yes |
-| POST | /auth/revoke-others | Revoke all sessions except current | Yes |
-| GET | /conferences | List conferences | No |
-| GET | /conferences/{slug} | Get conference details | No |
-| POST | /conferences | Create conference | Yes (Organizer) |
-| GET | /conferences/{slug}/attendees | List attendees | Yes |
-| GET | /conferences/{slug}/rooms | List rooms with availability | No |
-| POST | /conferences/{slug}/rooms | Add room | Yes (Organizer) |
-| GET | /bookings | Get user's bookings | Yes |
-| POST | /bookings | Create booking | Yes |
-| DELETE | /bookings/{id} | Cancel booking | Yes |
-| PUT | /bookings/{id}/confirm | Confirm booking | Yes (Organizer) |
-| GET | /requests | Get roommate requests | Yes |
-| POST | /requests | Send roommate request | Yes |
-| PUT | /requests/{id}/accept | Accept request | Yes |
-| PUT | /requests/{id}/decline | Decline request | Yes |
-| GET | /users/me | Get current user | Yes |
-| PUT | /users/me | Update profile | Yes |
-| GET | /conferences/{slug}/export | Export CSV | Yes (Organizer) |
+### Registered in `internal/api/routes.go`
+
+| Method | Path | Description | Auth | Status |
+|--------|------|-------------|------|--------|
+| GET | /health | Health check | No | Implemented |
+| POST | /auth/device | Initiate GitHub device flow | No | Implemented |
+| POST | /auth/token | Exchange device code for access and refresh tokens | No | Implemented |
+| POST | /auth/refresh | Rotate access and refresh tokens | No | Implemented |
+| POST | /auth/revoke | Revoke current authenticated session | Yes | Implemented |
+| GET | /conferences | List conferences | No | Implemented |
+| GET | /conferences/{slug} | Get conference details | No | Implemented |
+| POST | /conferences | Create conference | Yes | Implemented |
+| PUT | /conferences/{slug} | Update conference | Yes (Organizer) | Implemented |
+| GET | /conferences/{slug}/attendees | List attendees | Yes | Implemented |
+| GET | /conferences/{slug}/dashboard | Get organizer dashboard data | Yes (Organizer) | Implemented |
+| GET | /conferences/{slug}/export | Export bookings as CSV | Yes (Organizer) | Implemented |
+| GET | /conferences/{slug}/rooms | List rooms with availability | No | Implemented |
+| POST | /conferences/{slug}/rooms | Add room | Yes (Organizer) | Implemented |
+| PUT | /conferences/{slug}/rooms/{number} | Update room | Yes (Organizer) | Implemented |
+| DELETE | /conferences/{slug}/rooms/{number} | Remove room | Yes (Organizer) | Implemented |
+| POST | /conferences/{slug}/organizers | Add organizer | Yes (Owner) | Implemented |
+| DELETE | /conferences/{slug}/organizers/{userID} | Remove organizer | Yes (Owner) | Implemented |
+| GET | /bookings | Get current user's active bookings | Yes | Implemented |
+| DELETE | /bookings/{id} | Cancel booking | Yes | Implemented |
+| POST | /requests | Send roommate request | Yes | Implemented |
+| GET | /requests | Get roommate requests | Yes | Implemented |
+| PUT | /requests/{id}/accept | Accept roommate request | Yes | Implemented |
+| PUT | /requests/{id}/decline | Decline roommate request | Yes | Implemented |
+| GET | /users/me | Get current user profile | Yes | Implemented |
+| PUT | /users/me | Update current user profile | Yes | Implemented |
+
+### Documented Target Endpoints Not Yet Wired
+
+| Method | Path | Note |
+|--------|------|------|
+| GET | /auth/sessions | Refresh-session records exist, but session listing is not exposed in the router |
+| DELETE | /auth/sessions/{session_id} | Selective session revocation is not exposed in the router |
+| POST | /auth/revoke-others | Global revocation is not exposed in the router |
+| POST | /bookings | Client, TUI, and service logic exist, but no handler method or route registration is currently present |
+| PUT | /bookings/{id}/confirm | Organizer confirmation flow remains planned only |
 
 ## 5.2 Authentication Flow
 
@@ -49,58 +63,59 @@ sequenceDiagram
     API->>GH: Request device code
     GH-->>API: device_code, user_code, verification_uri
     API-->>CLI: device_code, user_code, URL
-    
+
     Note over CLI: Display user_code and URL
-    
-    loop Poll until authorized (every 5s)
+
+    loop Poll until authorized
         CLI->>API: POST /auth/token {device_code}
         API->>GH: Check authorization status
         alt Authorized
             GH-->>API: access_token
-            API->>API: Create/update user, Generate PASETO
-            API-->>CLI: 200 {access_token, user}
+            API->>API: Create/update user, persist refresh session, issue PASETO
+            API-->>CLI: 200 {access_token, refresh_token, user}
         else Pending
             API-->>CLI: 202 Accepted
         end
     end
-    
-    Note over CLI: Store PASETO in keychain
+
+    Note over CLI: Store access and refresh tokens in keychain
 ```
 
 ## 5.3 Token Claim Validation Policy
 
-- **Required Claims:** `iss`, `aud`, `sub`, `role`, `iat`, `nbf`, `exp`, `jti`
+- **Required Claims:** `iss`, `aud`, `sub`, `sid`, `iat`, `nbf`, `exp`, `jti`
 - **Issuer Rule:** `iss` must exactly match `unconf-api`
-- **Audience Rule:** `aud` must contain `unconf-cli`
-- **Time Rules:** reject tokens with missing/invalid `nbf`/`exp`; enforce max clock skew of ±60s
-- **Token Age Rule:** reject tokens older than 24h based on `iat`, even if `exp` is malformed/overlong
-- **Failure Behavior:** invalid claims return `401` with normalized auth error code; no partial authorization
+- **Audience Rule:** `aud` must exactly match `unconf-cli`
+- **Time Rules:** reject tokens with missing or invalid `nbf` or `exp`; enforce max clock skew of ±60s
+- **Token Age Rule:** reject tokens older than 24h based on `iat`, even if `exp` is malformed or overlong
+- **Failure Behavior:** invalid claims return `401` with normalized auth error codes; no partial authorization
 
 ## 5.4 Token Lifecycle Controls
 
 - **Access Token TTL:** 24 hours (PASETO `v4.local`)
-- **Refresh Flow:** `POST /auth/refresh` rotates token and invalidates prior token
-- **Revocation Flow:** `POST /auth/revoke` revokes current token/session immediately
-- **Replay Protection:** include `jti`; maintain denylist for revoked/rotated tokens until expiry
-- **Logout Semantics:** CLI `unconf logout` clears keychain token and calls revocation endpoint when online
+- **Refresh Token TTL:** 7 days (stored server-side as hashed refresh-session rows)
+- **Refresh Flow:** `POST /auth/refresh` is unauthenticated, accepts `refresh_token` in the request body, rotates both access and refresh tokens, and invalidates the previous refresh token
+- **Revocation Flow:** `POST /auth/revoke` revokes the current authenticated session using the `sid` claim from the access token
+- **Logout Semantics:** CLI `unconf logout` clears local credentials and calls the revoke endpoint when possible
+- **Current Gap:** session listing, selective revocation of other sessions, and revoke-others flows are still planned-only at the router layer
 
 ## 5.5 Session Governance Model
 
-- **Session Identity:** each login creates `session_id` + device label (user-provided or derived)
-- **Session Binding:** token embeds `sid` claim mapped to server-side session record
-- **Session List:** `GET /auth/sessions` returns active sessions with `session_id`, `device`, `created_at`, `last_seen_at`, `current`
-- **Selective Revocation:** `DELETE /auth/sessions/{session_id}` revokes one session and its active token chain
-- **Global Cleanup:** `POST /auth/revoke-others` revokes all sessions except current
-- **Propagation Target:** revoked sessions become unusable within 60 seconds
+- **Session Identity:** each login creates a refresh-session record tied to a generated session ID
+- **Session Binding:** access tokens embed `sid`, and refresh-token rotation updates the matching refresh-session record
+- **Implemented Operations:** refresh-token rotation and current-session revocation
+- **Planned Operations:** session listing, targeted revocation of another session, and revoke-all-others
+- **Data Model Reality:** the database already includes refresh-session persistence, so the remaining work is API exposure and handler wiring
 
 ## 5.6 Authorization Matrix
 
 | Endpoint Pattern | Attendee | Organizer | Notes |
 |------------------|----------|-----------|-------|
-| `GET /conferences*` | ✅ | ✅ | Public conference read endpoints remain unauthenticated where specified |
-| `GET /bookings`, `POST /bookings`, `DELETE /bookings/{id}` | ✅ (own resources) | ✅ | Enforce ownership unless organizer override is required |
-| `GET /requests`, `POST /requests`, `PUT /requests/{id}/*` | ✅ (own requests) | ✅ | Ownership checks on source/target user |
-| `GET/PUT /users/me` | ✅ | ✅ | Self-service profile only |
-| `POST /conferences`, `POST /conferences/{slug}/rooms`, `PUT /bookings/{id}/confirm`, `GET /conferences/{slug}/export` | ❌ | ✅ | Organizer role required for conference scope |
+| `GET /conferences*`, `GET /conferences/{slug}/rooms` | ✅ | ✅ | Public read endpoints are intentionally unauthenticated |
+| `GET /bookings`, `DELETE /bookings/{id}`, `GET /requests`, `POST /requests`, `PUT /requests/{id}/*`, `GET/PUT /users/me`, `POST /auth/revoke` | ✅ (own resources) | ✅ (own resources) | Ownership and identity come from the authenticated access token |
+| `POST /conferences` | ⚠️ | ✅ | Authenticated creator bootstrap is allowed for the first conference; later creates require existing organizer membership in service logic |
+| `PUT /conferences/{slug}`, `POST/PUT/DELETE /conferences/{slug}/rooms`, `GET /conferences/{slug}/dashboard`, `GET /conferences/{slug}/export` | ❌ | ✅ (Organizer) | Guarded by organizer middleware |
+| `POST/DELETE /conferences/{slug}/organizers*` | ❌ | ✅ (Owner) | Guarded by owner-only organizer middleware |
+| `POST /bookings`, `PUT /bookings/{id}/confirm` | Planned | Planned | Still part of the target design, but not currently exposed in the router |
 
 ---

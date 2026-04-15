@@ -101,4 +101,37 @@
 5. Option to include cancelled bookings: `--include-cancelled`
 6. Organizer-only command
 
+## Story 5.8: Cancel Command
+
+**As an** attendee,
+**I want** a safe and explicit `unconf cancel` flow,
+**so that** I can cancel my current booking without ambiguity and immediately free the room.
+
+**Acceptance Criteria:**
+1. `unconf cancel` routes through the backend API and requires explicit confirmation by default
+2. `--yes` skips the confirmation prompt for scripted or power-user flows
+3. Successful cancellation removes the booking from active occupancy projections and keeps roommate-preservation behavior intact
+
+## Story 5.9: Status Command Lifecycle Consistency
+
+**As an** attendee,
+**I want** `unconf status` to reflect my live booking lifecycle immediately after cancellations,
+**so that** I can trust what the CLI shows me after booking-state transitions.
+
+**Acceptance Criteria:**
+1. `unconf status` excludes cancelled bookings from active status projections
+2. `unconf cancel` followed by `unconf status` yields a deterministic no-active-booking outcome in the same conference context
+3. Status output remains privacy-aware for roommate visibility and consistent with existing cancellation behavior
+
+## Story 5.10: Organizer Booking Confirmation Decision
+
+**As an** organizer,
+**I want** booking-confirmation behavior to be explicit in the product surface,
+**so that** attendee flows, hotel automation, and the docs do not disagree about whether a manual confirmation step exists.
+
+**Acceptance Criteria:**
+1. Product and engineering decide whether organizer confirmation remains in scope or is removed from the design
+2. If retained, the API, CLI, and architecture docs all expose and describe the same confirmation behavior
+3. If removed, legacy references to organizer confirmation are deleted from the PRD and architecture set
+
 ---

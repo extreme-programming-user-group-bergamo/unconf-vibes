@@ -1,219 +1,155 @@
 # UNCONF CLI Source Tree
 
-> Quick reference for project structure. See [architecture.md](../architecture.md) for full documentation.
+> Quick reference for the current repository structure. See [architecture.md](../architecture.md) for the full architecture.
 
 ## Repository Structure
 
-```
+```text
 unconf/
 ├── .github/
+│   ├── agents/                    # BMAD / Copilot agent definitions
+│   ├── prompts/                   # Prompt bundles
+│   ├── skills/                    # Repo-scoped skills
 │   └── workflows/
-│       ├── ci.yaml              # Test, lint on PR/push
-│       ├── release.yaml         # GoReleaser on version tag
-│       └── deploy.yaml          # Fly.io deployment on tag
-│
-├── cmd/                         # 📦 Binary entry points
-│   ├── unconf/                  # CLI binary
-│   │   └── main.go              # CLI entry: initialize Cobra, run root command
-│   └── server/                  # API server binary
-│       └── main.go              # Server entry: setup Gin, start HTTP
-│
-├── internal/                    # 🔒 Private application code
-│   │
-│   ├── api/                     # HTTP API layer (Gin)
-│   │   ├── routes.go            # Route definitions, middleware chain
-│   │   ├── middleware/
-│   │   │   ├── auth.go          # PASETO validation, user extraction
-│   │   │   ├── cors.go          # CORS headers
-│   │   │   ├── logger.go        # Request logging (slog)
-│   │   │   ├── organizer.go     # Organizer permission check
-│   │   │   └── recovery.go      # Panic recovery
-│   │   ├── handlers/
-│   │   │   ├── health.go        # GET /health
-│   │   │   ├── auth.go          # POST /auth/device, /auth/token
-│   │   │   ├── conferences.go   # Conference CRUD
-│   │   │   ├── rooms.go         # Room listing, creation
-│   │   │   ├── bookings.go      # Booking lifecycle
-│   │   │   ├── requests.go      # Roommate requests
-│   │   │   ├── users.go         # User profile
-│   │   │   └── organizer.go     # Organizer-only endpoints
-│   │   └── responses/
-│   │       ├── success.go       # Standard success wrapper
-│   │       └── errors.go        # Error response, mapping
-│   │
-│   ├── cli/                     # CLI commands (Cobra)
-│   │   ├── root.go              # Root command, global flags (--json, --verbose)
-│   │   ├── login.go             # unconf login
-│   │   ├── logout.go            # unconf logout
-│   │   ├── list.go              # unconf list
-│   │   ├── info.go              # unconf info <slug>
-│   │   ├── checkout.go          # unconf checkout <slug>
-│   │   ├── config.go            # unconf config
-│   │   ├── rooms.go             # unconf rooms → launches TUI
-│   │   ├── book.go              # unconf book <room>
-│   │   ├── status.go            # unconf status
-│   │   ├── cancel.go            # unconf cancel
-│   │   ├── invite.go            # unconf invite <username>
-│   │   ├── requests.go          # unconf requests [accept|decline]
-│   │   ├── attendees.go         # unconf attendees
-│   │   ├── dashboard.go         # unconf dashboard (organizer TUI)
-│   │   ├── create.go            # unconf create (organizer)
-│   │   ├── confirm.go           # unconf confirm <id> (organizer)
-│   │   └── export.go            # unconf export (organizer)
-│   │
-│   ├── tui/                     # TUI components (Bubble Tea)
-│   │   ├── rooms/
-│   │   │   ├── model.go         # RoomExplorerModel (state)
-│   │   │   ├── view.go          # View() rendering
-│   │   │   └── messages.go      # Message types (RoomsLoadedMsg, etc.)
-│   │   ├── wizard/
-│   │   │   ├── model.go         # BookingWizardModel
-│   │   │   ├── steps.go         # Step definitions (confirm, privacy, notes)
-│   │   │   └── view.go          # Step rendering
-│   │   ├── dashboard/
-│   │   │   ├── model.go         # OrganizerDashboardModel
-│   │   │   └── view.go          # Dashboard rendering
-│   │   └── common/
-│   │       ├── styles.go        # Lip Gloss style definitions
-│   │       ├── header.go        # Shared header component
-│   │       └── footer.go        # Shared footer with help
-│   │
-│   ├── service/                 # Business logic layer
-│   │   ├── auth.go              # GitHub OAuth, PASETO generation
-│   │   ├── conference.go        # Conference operations
-│   │   ├── room.go              # Room operations, availability
-│   │   ├── booking.go           # Booking lifecycle, validation
-│   │   ├── request.go           # Roommate request logic
-│   │   ├── user.go              # User profile management
-│   │   ├── email.go             # Email orchestration
-│   │   └── errors.go            # Domain errors (ErrRoomFull, etc.)
-│   │
-│   ├── repository/              # Data access layer
-│   │   ├── interfaces.go        # Repository interfaces
-│   │   ├── sqlite/              # SQLite implementations
-│   │   │   ├── user.go
-│   │   │   ├── conference.go
-│   │   │   ├── room.go
-│   │   │   ├── booking.go
-│   │   │   ├── request.go
-│   │   │   └── organizer.go
-│   │   └── postgres/            # Future: PostgreSQL implementations
-│   │       └── .gitkeep
-│   │
-│   ├── models/                  # Domain models (shared)
-│   │   ├── user.go              # User struct
-│   │   ├── conference.go        # Conference struct
-│   │   ├── room.go              # Room struct
-│   │   ├── booking.go           # Booking struct, BookingStatus
-│   │   └── request.go           # RoommateRequest struct
-│   │
-│   ├── auth/                    # Authentication
-│   │   ├── github.go            # GitHub OAuth client
-│   │   ├── paseto.go            # PASETO generation/validation
-│   │   └── store.go             # Token storage (keyring)
-│   │
-│   ├── email/                   # Email service
-│   │   ├── service.go           # Email orchestration
-│   │   ├── smtp.go              # SMTP sender (dev/production)
-│   │   ├── sendgrid.go          # SendGrid API sender
+│       ├── ci.yaml               # Test and lint workflow
+│       ├── deploy.yaml           # Deployment workflow scaffold
+│       ├── docker-smoke.yml      # Container smoke validation
+│       └── release.yaml          # Tagged release builds
+├── cmd/
+│   ├── server/
+│   │   ├── main.go               # API bootstrap and dependency wiring
+│   │   └── main_integration_test.go
+│   └── unconf/
+│       └── main.go               # CLI entry point
+├── internal/
+│   ├── api/
+│   │   ├── routes.go             # Gin route registration
+│   │   ├── middleware/           # Auth, CORS, logging, organizer checks
+│   │   ├── handlers/             # HTTP handlers
+│   │   └── responses/            # Error envelope helpers
+│   ├── auth/
+│   │   ├── github_provider.go    # GitHub device flow client
+│   │   ├── token_service.go      # PASETO issue/validate helpers
+│   │   └── store.go              # Keyring-backed token storage
+│   ├── cli/
+│   │   ├── root.go               # Root command and dependency wiring
+│   │   ├── db.go                 # Local DB helpers
+│   │   ├── login.go / logout.go / config.go
+│   │   ├── list.go / info.go / checkout.go
+│   │   ├── rooms.go / rooms_manage.go
+│   │   ├── book.go / status.go / cancel.go
+│   │   ├── attendees.go / invite.go / requests.go
+│   │   ├── create.go / edit.go / dashboard.go / export.go
+│   │   └── conference_forms.go
+│   ├── client/
+│   │   ├── client.go / auth_client.go
+│   │   ├── bookings.go / rooms.go / requests.go
+│   │   ├── attendees.go / dashboard.go / export.go
+│   │   └── conferences.go
+│   ├── config/
+│   │   ├── config.go             # Viper-backed configuration
+│   │   └── context.go            # Active conference context manager
+│   ├── email/
+│   │   ├── provider.go           # Provider selection
+│   │   ├── renderer.go / mapper.go / service.go
+│   │   ├── smtp_sender.go / sendgrid_sender.go / mailgun_sender.go
 │   │   └── templates/
-│   │       ├── booking.html     # New booking notification
-│   │       ├── cancellation.html# Cancellation notice
-│   │       └── confirmation.html# Booking confirmation
-│   │
-│   ├── config/                  # Configuration
-│   │   ├── config.go            # Viper wrapper
-│   │   └── defaults.go          # Default values
-│   │
-│   └── client/                  # HTTP client for CLI
-│       ├── client.go            # Base client, auth injection
-│       ├── conferences.go       # Conference API calls
-│       ├── rooms.go             # Room API calls
-│       ├── bookings.go          # Booking API calls
-│       └── requests.go          # Roommate request API calls
-│
-├── migrations/                  # Database migrations (golang-migrate)
-│   ├── 000001_create_users.up.sql
-│   ├── 000001_create_users.down.sql
-│   ├── 000002_create_conferences.up.sql
-│   ├── 000002_create_conferences.down.sql
-│   ├── 000003_create_rooms.up.sql
-│   ├── 000003_create_rooms.down.sql
-│   ├── 000004_create_bookings.up.sql
-│   ├── 000004_create_bookings.down.sql
-│   ├── 000005_create_requests.up.sql
-│   ├── 000005_create_requests.down.sql
-│   ├── 000006_create_email_logs.up.sql
-│   └── 000006_create_email_logs.down.sql
-│
-├── configs/                     # Configuration files
-│   ├── config.example.yaml      # Example config for developers
-│   └── config.dev.yaml          # Development defaults
-│
-├── scripts/                     # Build/deploy scripts
-│   ├── build.sh                 # Build both binaries
-│   ├── migrate.sh               # Run migrations
-│   └── seed.sh                  # Seed dev data
-│
-├── docs/                        # Documentation
-│   ├── prd.md                   # Product Requirements
-│   ├── brief.md                 # Project Brief
-│   ├── architecture.md          # This architecture document
-│   ├── api.yaml                 # OpenAPI specification
-│   └── architecture/            # Sharded architecture docs
-│       ├── source-tree.md       # This file
-│       ├── tech-stack.md        # Technology choices
-│       └── coding-standards.md  # Development guidelines
-│
-├── testdata/                    # Test fixtures
-│   └── conferences.json         # Sample conference data
-│
-├── Dockerfile                   # Server container build
-├── docker-compose.yml           # Local dev (server + MailHog)
-├── fly.toml                     # Fly.io deployment config
-├── Makefile                     # Task runner
-├── .goreleaser.yaml             # CLI release config
-├── .golangci.yaml               # Linter config
-├── .gitignore
+│   │       ├── new_booking.tmpl
+│   │       ├── cancellation.tmpl
+│   │       └── modification.tmpl
+│   ├── models/
+│   │   ├── user.go / conference.go / room.go / booking.go / request.go
+│   │   ├── conference_organizer.go
+│   │   ├── refresh_session.go
+│   │   └── email_log.go
+│   ├── repository/
+│   │   ├── interfaces.go
+│   │   ├── errors.go
+│   │   ├── mock_repository.go
+│   │   └── sqlite/
+│   │       ├── db.go
+│   │       ├── user_repository.go
+│   │       ├── conference_repository.go
+│   │       ├── room_repository.go
+│   │       ├── booking_repository.go
+│   │       ├── request_repository.go
+│   │       ├── organizer_repository.go
+│   │       ├── refresh_session_repository.go
+│   │       └── email_log_repository.go
+│   ├── service/
+│   │   ├── auth_service.go
+│   │   ├── user_service.go
+│   │   ├── conference_service.go
+│   │   ├── room_service.go
+│   │   ├── booking_service.go
+│   │   ├── request_service.go
+│   │   ├── attendee_service.go
+│   │   ├── organizer_service.go
+│   │   ├── hotel_email_service.go
+│   │   └── errors.go
+│   └── tui/
+│       ├── common/               # Shared styles, header, footer
+│       ├── rooms/                # Room explorer TUI
+│       ├── wizard/               # Booking wizard TUI
+│       └── dashboard/            # Organizer dashboard TUI
+├── migrations/
+│   ├── 1_init.*.sql through 9_email_logs.*.sql
+│   └── embed.go                  # Embedded migration registry
+├── assets/                       # Logos and image assets
+├── bin/                          # Built binaries (`unconf`, `unconf-server`)
+├── configs/                      # Present but currently empty
+├── docs/                         # PRD, architecture, story, and QA docs
+├── Dockerfile
+├── Makefile
+├── MVP.md
+├── README.md
 ├── go.mod
-├── go.sum
-└── README.md
+└── AGENTS.md
 ```
+
+## Current Layout Notes
+
+- `configs/` exists in the repository but does not currently contain committed configuration files.
+- `bin/` contains built artifacts and is not source-of-truth code.
+- The router currently wires `GET /bookings` and `DELETE /bookings/{id}` only; client and TUI booking creation support exists separately and still needs server route registration.
+- Older placeholders such as `/pkg`, `/scripts`, `docker-compose.yml`, and `fly.toml` are not present in the current repository.
 
 ## Key Directories
 
 | Directory | Purpose | When to Modify |
 |-----------|---------|----------------|
-| `cmd/` | Binary entry points | Rarely (initialization only) |
-| `internal/cli/` | CLI commands | Adding new commands |
-| `internal/tui/` | TUI components | UI changes |
-| `internal/api/handlers/` | HTTP handlers | Adding/changing endpoints |
-| `internal/service/` | Business logic | Business rule changes |
-| `internal/repository/` | Data access | Query changes, new DB support |
-| `internal/models/` | Domain models | Schema changes |
-| `migrations/` | Database schema | Schema changes |
+| `.github/workflows/` | CI, release, and container smoke automation | Workflow or release changes |
+| `cmd/` | Binary entry points | Bootstrap or process lifecycle changes |
+| `internal/cli/` | CLI commands and prompts | New commands or UX changes |
+| `internal/tui/` | Bubble Tea UIs | Interactive room, wizard, or dashboard changes |
+| `internal/api/` | Router, middleware, handlers | Endpoint and auth-surface changes |
+| `internal/service/` | Business rules | Domain behavior changes |
+| `internal/repository/sqlite/` | Persistence | Query, transaction, or schema-adapter changes |
+| `internal/models/` | Shared data models | Schema or API-contract changes |
+| `migrations/` | Database schema history | Schema evolution |
+| `docs/` | Product, architecture, story, and QA artifacts | Documentation maintenance |
 
 ## File Naming
 
-- **Go files:** `snake_case.go` (e.g., `booking_service.go`)
-- **Test files:** `*_test.go` next to source (e.g., `booking_test.go`)
-- **Migrations:** `NNNNNN_description.up.sql` / `.down.sql`
-- **Templates:** `purpose.html` (e.g., `booking.html`)
+- **Go files:** `snake_case.go`
+- **Test files:** `*_test.go` next to source
+- **Migrations:** `{version}_{name}.up.sql` / `.down.sql`
+- **Email templates:** `.tmpl` files under `internal/email/templates/`
 
 ## Import Order
 
 ```go
 import (
-    // 1. Standard library
-    "context"
-    "fmt"
-    "log/slog"
+	// 1. Standard library
+	"context"
+	"fmt"
+	"log/slog"
 
-    // 2. Third-party
-    "github.com/gin-gonic/gin"
+	// 2. Third-party
+	"github.com/gin-gonic/gin"
 
-    // 3. Internal packages
-    "unconf/internal/models"
-    "unconf/internal/service"
+	// 3. Internal packages
+	"github.com/katurdays/unconf/internal/models"
+	"github.com/katurdays/unconf/internal/service"
 )
 ```
