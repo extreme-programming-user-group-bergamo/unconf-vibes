@@ -62,6 +62,39 @@ func (m *mockStatusContextStore) GetActiveConference() (string, error) {
 	return m.activeConference, nil
 }
 
+type lifecycleCommandClient struct {
+	bookings    []client.BookingResponse
+	requests    []client.RoommateRequestResponse
+	conference  client.ConferenceResponse
+	cancelCalls int
+}
+
+func (m *lifecycleCommandClient) ListBookings(_ context.Context) ([]client.BookingResponse, error) {
+	return m.bookings, nil
+}
+
+func (m *lifecycleCommandClient) ListRoommateRequests(_ context.Context) ([]client.RoommateRequestResponse, error) {
+	return m.requests, nil
+}
+
+func (m *lifecycleCommandClient) GetConference(_ context.Context, _ string) (*client.ConferenceResponse, error) {
+	return &m.conference, nil
+}
+
+func (m *lifecycleCommandClient) CancelBooking(_ context.Context, bookingID int64) (*client.BookingResponse, error) {
+	for i := range m.bookings {
+		if m.bookings[i].ID != bookingID {
+			continue
+		}
+
+		m.bookings[i].Status = "cancelled"
+		m.cancelCalls++
+		return &m.bookings[i], nil
+	}
+
+	return nil, client.ErrBookingNotFound
+}
+
 func TestStatusCmd_UsesActiveConferenceAndRendersBookingProjection(t *testing.T) {
 	statusClient := &mockStatusClient{
 		conference: &client.ConferenceResponse{ID: 2, Slug: "socrates-2026"},
@@ -415,6 +448,50 @@ func TestStatusCmd_RendersOpenSpotSummaryAfterRoommateDeparture(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, stdout.String(), "Room 204 (1/2 spots) - open spot available")
 	assert.Contains(t, stdout.String(), "Type:       double")
+}
+
+func TestCancelThenStatusLifecycle_NoActiveBookingAfterCancel(t *testing.T) {
+	lifecycleClient := &lifecycleCommandClient{
+		bookings: []client.BookingResponse{
+			{
+				ID:             17,
+				RoomID:         7,
+				ConferenceID:   2,
+				ConferenceSlug: "socrates-2026",
+				Status:         "confirmed",
+				PrivacySetting: "public",
+				Room: client.BookingRoomResponse{
+					RoomNumber: "204",
+				},
+				Conference: client.BookingConferenceResponse{
+					ID:   2,
+					Slug: "socrates-2026",
+					Name: "SoCraTes 2026",
+				},
+			},
+		},
+		conference: client.ConferenceResponse{ID: 2, Slug: "socrates-2026"},
+	}
+
+	ctxStore := &mockStatusContextStore{activeConference: "socrates-2026"}
+	cancelCmd := newCancelCmd(lifecycleClient, ctxStore)
+	var cancelOut bytes.Buffer
+	cancelCmd.SetOut(&cancelOut)
+	cancelCmd.SetErr(&bytes.Buffer{})
+	cancelCmd.SetIn(bytes.NewBufferString("yes\n"))
+	cancelCmd.SetArgs([]string{})
+	require.NoError(t, cancelCmd.Execute())
+	assert.Equal(t, 1, lifecycleClient.cancelCalls)
+	assert.Contains(t, cancelOut.String(), "Booking cancelled successfully.")
+
+	statusCmd := newStatusCmd(lifecycleClient, ctxStore)
+	var statusOut bytes.Buffer
+	statusCmd.SetOut(&statusOut)
+	statusCmd.SetErr(&bytes.Buffer{})
+	statusCmd.SetArgs([]string{})
+	require.NoError(t, statusCmd.Execute())
+	assert.Contains(t, statusOut.String(), "No booking found for active conference")
+	assert.NotContains(t, statusOut.String(), "Room:")
 }
 
 func TestRenderRoommates_EmptyDisplayNameFallsBackToAttendee(t *testing.T) {

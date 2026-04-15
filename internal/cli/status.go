@@ -67,6 +67,7 @@ func runStatus(cmd *cobra.Command, statusClient StatusClient, ctxStore StatusCon
 	if err != nil {
 		return handleStatusFetchError(cmd, err, "bookings")
 	}
+	bookings = filterActiveBookingResponses(bookings)
 
 	requests, err := statusClient.ListRoommateRequests(ctx)
 	if err != nil {
@@ -278,6 +279,10 @@ func filterBookingsByConference(bookings []client.BookingResponse, conferenceID 
 	normalizedSlug := strings.ToLower(strings.TrimSpace(conferenceSlug))
 
 	for i := range bookings {
+		if strings.EqualFold(strings.TrimSpace(bookings[i].Status), "cancelled") {
+			continue
+		}
+
 		if bookings[i].ConferenceID == conferenceID {
 			filtered = append(filtered, bookings[i])
 			continue
@@ -291,6 +296,20 @@ func filterBookingsByConference(bookings []client.BookingResponse, conferenceID 
 		if strings.ToLower(strings.TrimSpace(bookings[i].Conference.Slug)) == normalizedSlug {
 			filtered = append(filtered, bookings[i])
 		}
+	}
+
+	return filtered
+}
+
+func filterActiveBookingResponses(bookings []client.BookingResponse) []client.BookingResponse {
+	filtered := make([]client.BookingResponse, 0, len(bookings))
+
+	for i := range bookings {
+		if strings.EqualFold(strings.TrimSpace(bookings[i].Status), "cancelled") {
+			continue
+		}
+
+		filtered = append(filtered, bookings[i])
 	}
 
 	return filtered

@@ -328,3 +328,47 @@ func TestBookingService_ListBookings_UsesActiveBookings(t *testing.T) {
 	assert.Equal(t, int64(1), result[0].ID)
 	assert.Equal(t, "socrates-26", result[0].ConferenceSlug)
 }
+
+func TestBookingService_ListBookings_ExcludesCancelledBookingsFromProjection(t *testing.T) {
+	now := time.Now().UTC()
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			listByUser: func(_ context.Context, userID int64) ([]*models.Booking, error) {
+				assert.Equal(t, int64(7), userID)
+				return []*models.Booking{
+					{ID: 1, UserID: 7, RoomID: 11, ConferenceID: 3, Status: models.BookingStatusConfirmed, PrivacySetting: "public", CreatedAt: now},
+					{ID: 2, UserID: 7, RoomID: 11, ConferenceID: 3, Status: models.BookingStatusCancelled, PrivacySetting: "public", CreatedAt: now.Add(-time.Minute)},
+				}, nil
+			},
+			listByRoom: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{ID: 1, UserID: 7}}, nil
+			},
+			getByIDFn: func(_ context.Context, _ int64) (*models.Booking, error) { return nil, errors.New("unused") },
+			cancelFn:  func(_ context.Context, _ int64) (*models.Booking, error) { return nil, errors.New("unused") },
+			cancelAndRequestsTxnFn: func(_ context.Context, _, _ int64) (*models.Booking, int64, error) {
+				return nil, 0, errors.New("unused")
+			},
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, RoomNumber: "204", RoomType: "double", PricePerNight: 120}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{
+			listFn: func(_ context.Context) ([]*models.Conference, error) {
+				return []*models.Conference{{ID: 3, Slug: "socrates-26", Name: "SoCraTes", StartDate: now, EndDate: now.Add(24 * time.Hour)}}, nil
+			},
+		},
+		&mockBookingServiceUserRepo{
+			getByIDFn: func(_ context.Context, _ int64) (*models.User, error) {
+				return &models.User{DisplayName: "ignored"}, nil
+			},
+		},
+	)
+
+	result, err := svc.ListBookings(context.Background(), 7)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, int64(1), result[0].ID)
+	assert.Equal(t, "confirmed", result[0].Status)
+}

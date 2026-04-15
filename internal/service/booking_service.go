@@ -110,6 +110,10 @@ func (s *BookingService) ListBookings(ctx context.Context, userID int64) ([]Book
 
 	response := make([]BookingResponse, 0, len(bookings))
 	for i := range bookings {
+		if bookings[i].Status == models.BookingStatusCancelled {
+			continue
+		}
+
 		booking, buildErr := s.buildBookingResponse(ctx, bookings[i], conferencesByID)
 		if buildErr != nil {
 			return nil, fmt.Errorf("failed to list bookings: %w", buildErr)
