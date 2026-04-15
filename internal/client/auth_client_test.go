@@ -258,6 +258,50 @@ func TestAuthenticatedClient_GetMe_RefreshSucceedsButRetryFails(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnauthorized)
 }
 
+func TestAuthenticatedClient_ExportConferenceBookingsCSV_AutoRefresh(t *testing.T) {
+	var exportCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/conferences/socrates-26/export":
+			n := exportCallCount.Add(1)
+			if n == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":{"code":"unauthorized","message":"expired"}}`))
+				return
+			}
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			assert.Equal(t, "true", r.URL.Query().Get("include_cancelled"))
+			_, _ = w.Write([]byte("name,email\nAlice,alice@test.dev\n"))
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				RefreshToken: "new-refresh-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    3600,
+				User: UserResponse{
+					ID:          7,
+					GitHubID:    "gh-7",
+					Email:       "org@test.dev",
+					DisplayName: "Organizer",
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	data, err := ac.ExportConferenceBookingsCSV(context.Background(), "socrates-26", true)
+	require.NoError(t, err)
+	assert.Equal(t, "name,email\nAlice,alice@test.dev\n", string(data))
+	assert.Equal(t, int32(2), exportCallCount.Load())
+}
+
 func TestAuthenticatedClient_UpdateMe_Success(t *testing.T) {
 	displayName := "Updated"
 	input := UpdateProfileRequest{DisplayName: &displayName}

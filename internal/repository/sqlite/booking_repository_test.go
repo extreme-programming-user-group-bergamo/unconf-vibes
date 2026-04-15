@@ -201,6 +201,45 @@ func TestBookingRepository_ListByConference_ExcludesCancelled(t *testing.T) {
 	assert.Empty(t, bookings)
 }
 
+func TestBookingRepository_ListByConferenceIncludingCancelled_ReturnsCancelledAndActive(t *testing.T) {
+	f := setupBookingFixture(t)
+	ctx := context.Background()
+
+	activeBooking, err := f.bookingRepo.Create(ctx, newTestBooking(f.room.ID, f.user.ID, f.conf.ID))
+	require.NoError(t, err)
+
+	user2, err := f.userRepo.Create(ctx, &models.User{
+		GitHubID:    "gh_booking_cancelled_include",
+		Email:       "cancelled-include@test.com",
+		DisplayName: "Cancelled Include",
+	})
+	require.NoError(t, err)
+	room2, err := f.roomRepo.Create(ctx, newTestRoom(f.conf.ID, "108"))
+	require.NoError(t, err)
+	cancelledBooking, err := f.bookingRepo.Create(ctx, newTestBooking(room2.ID, user2.ID, f.conf.ID))
+	require.NoError(t, err)
+	_, err = f.bookingRepo.db.ExecContext(ctx, "UPDATE bookings SET status = 'cancelled' WHERE id = ?", cancelledBooking.ID)
+	require.NoError(t, err)
+
+	bookings, err := f.bookingRepo.ListByConferenceIncludingCancelled(ctx, f.conf.ID)
+	require.NoError(t, err)
+	require.Len(t, bookings, 2)
+
+	foundActive := false
+	foundCancelled := false
+	for i := range bookings {
+		if bookings[i].ID == activeBooking.ID {
+			foundActive = true
+		}
+		if bookings[i].ID == cancelledBooking.ID {
+			foundCancelled = true
+			assert.Equal(t, models.BookingStatusCancelled, bookings[i].Status)
+		}
+	}
+	assert.True(t, foundActive)
+	assert.True(t, foundCancelled)
+}
+
 func TestBookingRepository_ListByUser_ReturnsActiveBookings(t *testing.T) {
 	f := setupBookingFixture(t)
 	ctx := context.Background()

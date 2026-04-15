@@ -15,6 +15,7 @@ import (
 type mockAttendeeService struct {
 	listAttendeesFn func(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error)
 	dashboardFn     func(ctx context.Context, slug string, requesterUserID int64, filters service.OrganizerDashboardFilters) (*service.OrganizerDashboardResponse, error)
+	exportCSVFn     func(ctx context.Context, slug string, requesterUserID int64, includeCancelled bool) ([]byte, error)
 }
 
 func (m *mockAttendeeService) ListAttendees(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error) {
@@ -37,6 +38,18 @@ func (m *mockAttendeeService) GetOrganizerDashboard(
 	return &service.OrganizerDashboardResponse{}, nil
 }
 
+func (m *mockAttendeeService) ExportConferenceBookingsCSV(
+	ctx context.Context,
+	slug string,
+	requesterUserID int64,
+	includeCancelled bool,
+) ([]byte, error) {
+	if m.exportCSVFn != nil {
+		return m.exportCSVFn(ctx, slug, requesterUserID, includeCancelled)
+	}
+	return []byte("name,email\n"), nil
+}
+
 func setupAttendeeRouter(handler *AttendeeHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -46,6 +59,7 @@ func setupAttendeeRouter(handler *AttendeeHandler) *gin.Engine {
 	})
 	router.GET("/conferences/:slug/attendees", handler.ListByConference)
 	router.GET("/conferences/:slug/dashboard", handler.OrganizerDashboard)
+	router.GET("/conferences/:slug/export", handler.ExportCSV)
 	return router
 }
 
@@ -155,4 +169,66 @@ func TestAttendeeHandler_OrganizerDashboard_InvalidBool(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "invalid_request")
+}
+
+func TestAttendeeHandler_ExportCSV_Success(t *testing.T) {
+	handler := NewAttendeeHandler(&mockAttendeeService{
+		exportCSVFn: func(_ context.Context, slug string, requesterUserID int64, includeCancelled bool) ([]byte, error) {
+			assert.Equal(t, "socrates-26", slug)
+			assert.Equal(t, int64(42), requesterUserID)
+			assert.True(t, includeCancelled)
+			return []byte("name,email\nAlice,alice@test.dev\n"), nil
+		},
+	})
+
+	router := setupAttendeeRouter(handler)
+	req := httptest.NewRequest(http.MethodGet, "/conferences/socrates-26/export?include_cancelled=true", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "socrates-26-bookings.csv")
+	assert.Contains(t, w.Body.String(), "Alice")
+}
+
+func TestAttendeeHandler_ExportCSV_InvalidBool(t *testing.T) {
+	handler := NewAttendeeHandler(&mockAttendeeService{})
+	router := setupAttendeeRouter(handler)
+	req := httptest.NewRequest(http.MethodGet, "/conferences/socrates-26/export?include_cancelled=nope", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid_request")
+}
+
+func TestAttendeeHandler_ExportCSV_MapsServiceErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "not found", serviceErr: service.ErrConferenceNotFound, wantStatus: http.StatusNotFound, wantCode: "not_found"},
+		{name: "forbidden", serviceErr: service.ErrOrganizerForbidden, wantStatus: http.StatusForbidden, wantCode: "forbidden"},
+		{name: "internal", serviceErr: errors.New("boom"), wantStatus: http.StatusInternalServerError, wantCode: "internal_error"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := NewAttendeeHandler(&mockAttendeeService{
+				exportCSVFn: func(_ context.Context, _ string, _ int64, _ bool) ([]byte, error) {
+					return nil, tc.serviceErr
+				},
+			})
+			router := setupAttendeeRouter(handler)
+			req := httptest.NewRequest(http.MethodGet, "/conferences/socrates-26/export", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Contains(t, w.Body.String(), tc.wantCode)
+		})
+	}
 }

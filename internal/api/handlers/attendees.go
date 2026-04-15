@@ -17,6 +17,7 @@ import (
 type serviceAttendeeService interface {
 	ListAttendees(ctx context.Context, slug string, requesterUserID int64) (*service.AttendeeListResponse, error)
 	GetOrganizerDashboard(ctx context.Context, slug string, requesterUserID int64, filters service.OrganizerDashboardFilters) (*service.OrganizerDashboardResponse, error)
+	ExportConferenceBookingsCSV(ctx context.Context, slug string, requesterUserID int64, includeCancelled bool) ([]byte, error)
 }
 
 // AttendeeHandler handles attendee API endpoints.
@@ -93,6 +94,39 @@ func (h *AttendeeHandler) OrganizerDashboard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// ExportCSV handles GET /conferences/:slug/export.
+func (h *AttendeeHandler) ExportCSV(c *gin.Context) {
+	slug := c.Param("slug")
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		responses.WriteError(c, "unauthorized", "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	includeCancelled, err := parseBoolQueryParam(c.Query("include_cancelled"))
+	if err != nil {
+		responses.WriteError(c, "invalid_request", "include_cancelled must be true or false", http.StatusBadRequest)
+		return
+	}
+
+	csvData, err := h.attendeeService.ExportConferenceBookingsCSV(c.Request.Context(), slug, userID, includeCancelled)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrConferenceNotFound):
+			responses.WriteError(c, "not_found", "Conference not found", http.StatusNotFound)
+		case errors.Is(err, service.ErrOrganizerForbidden):
+			responses.WriteError(c, "forbidden", "Organizer permissions required", http.StatusForbidden)
+		default:
+			slog.Error("failed to export conference bookings", "error", err, "slug", slug)
+			responses.WriteError(c, "internal_error", "Failed to export conference bookings", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=\""+slug+"-bookings.csv\"")
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", csvData)
 }
 
 func parseBoolQueryParam(raw string) (bool, error) {

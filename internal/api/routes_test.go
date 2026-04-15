@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1005,6 +1006,112 @@ func TestGetDashboard_NonOrganizerReturns403(t *testing.T) {
 	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-dashboard-403/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+func TestGetExport_OrganizerGetsCSV_DefaultExcludesCancelled(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-export", "Export Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-export")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "801", "double", 120.0, 2)
+	organizer := createTestUserWithName(t, db, "gh-org-export", "org-export@test.com", "Org Export", "public")
+	activeUser := createTestUserWithName(t, db, "gh-export-active", "active@test.com", "Active User", "public")
+	cancelledUser := createTestUserWithName(t, db, "gh-export-cancelled", "cancelled@test.com", "Cancelled User", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	_, err = bookingRepo.Create(context.Background(), &models.Booking{
+		RoomID:         room.ID,
+		UserID:         activeUser.ID,
+		ConferenceID:   conf.ID,
+		Status:         models.BookingStatusConfirmed,
+		PrivacySetting: "public",
+		Notes:          "Vegan",
+	})
+	require.NoError(t, err)
+	_, err = bookingRepo.Create(context.Background(), &models.Booking{
+		RoomID:         room.ID,
+		UserID:         cancelledUser.ID,
+		ConferenceID:   conf.ID,
+		Status:         models.BookingStatusCancelled,
+		PrivacySetting: "public",
+		Notes:          "No peanuts",
+	})
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-export/export", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "text/csv")
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	output := string(body)
+	assert.Contains(t, output, "name,email,room,dates,dietary/special notes")
+	assert.Contains(t, output, "Active User,active@test.com,801")
+	assert.NotContains(t, output, "Cancelled User")
+}
+
+func TestGetExport_IncludeCancelledIncludesCancelledRows(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+
+	createTestConference(t, db, "conf-export-all", "Export All Conf",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-export-all")
+	require.NoError(t, err)
+
+	room := createTestRoom(t, db, conf.ID, "802", "double", 120.0, 2)
+	organizer := createTestUserWithName(t, db, "gh-org-export-all", "org-export-all@test.com", "Org Export All", "public")
+	cancelledUser := createTestUserWithName(t, db, "gh-export-all-cancelled", "all-cancelled@test.com", "Cancelled User", "public")
+	createTestOrganizer(t, db, conf.ID, organizer.ID, models.ConferenceOrganizerRoleAdmin)
+	accessToken, _ := createTestSession(t, db, organizer.ID, tokenService)
+
+	bookingRepo := sqlite.NewBookingRepository(db)
+	_, err = bookingRepo.Create(context.Background(), &models.Booking{
+		RoomID:         room.ID,
+		UserID:         cancelledUser.ID,
+		ConferenceID:   conf.ID,
+		Status:         models.BookingStatusCancelled,
+		PrivacySetting: "public",
+		Notes:          "Late cancel",
+	})
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-export-all/export?include_cancelled=true", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(body), "Cancelled User,all-cancelled@test.com,802")
+}
+
+func TestGetExport_NonOrganizerReturns403(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	createTestConference(t, db, "conf-export-403", "Export 403",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	user := createTestUser(t, db)
+	accessToken, _ := createTestSession(t, db, user.ID, tokenService)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/conferences/conf-export-403/export", nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

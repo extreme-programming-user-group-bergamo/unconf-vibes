@@ -57,8 +57,10 @@ func NewRouter(
 			attendeeRoutes.GET("/attendees", attendeeHandler.ListByConference)
 			if organizerChecker != nil {
 				attendeeRoutes.GET("/dashboard", middleware.RequireOrganizer(organizerChecker), attendeeHandler.OrganizerDashboard)
+				attendeeRoutes.GET("/export", middleware.RequireOrganizer(organizerChecker), attendeeHandler.ExportCSV)
 			} else {
 				attendeeRoutes.GET("/dashboard", attendeeHandler.OrganizerDashboard)
+				attendeeRoutes.GET("/export", attendeeHandler.ExportCSV)
 			}
 		}
 

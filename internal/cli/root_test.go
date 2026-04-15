@@ -140,6 +140,15 @@ func TestRootCmdIncludesEditCommand(t *testing.T) {
 	assert.Equal(t, "edit", editCmd.Name())
 }
 
+func TestRootCmdIncludesExportCommand(t *testing.T) {
+	cmd := NewRootCmd()
+
+	exportCmd, _, err := cmd.Find([]string{"export"})
+	require.NoError(t, err)
+	require.NotNil(t, exportCmd)
+	assert.Equal(t, "export", exportCmd.Name())
+}
+
 func TestDBStatusCommand(t *testing.T) {
 	t.Setenv("UNCONF_API_ENDPOINT", "http://127.0.0.1:8080")
 	t.Setenv("UNCONF_LOG_LEVEL", "debug")

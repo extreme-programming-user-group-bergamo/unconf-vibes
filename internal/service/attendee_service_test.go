@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/katurdays/unconf/internal/models"
 	"github.com/katurdays/unconf/internal/repository"
@@ -283,6 +284,98 @@ func TestAttendeeService_GetOrganizerDashboard_NonOrganizerForbidden(t *testing.
 	)
 
 	_, err := svc.GetOrganizerDashboard(context.Background(), conf.Slug, 11, OrganizerDashboardFilters{})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrOrganizerForbidden)
+}
+
+func TestAttendeeService_ExportConferenceBookingsCSV_DefaultExcludesCancelled(t *testing.T) {
+	conf := testConference()
+	conf.StartDate = time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	conf.EndDate = time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	room := testRoom(1, conf.ID, "101", 2)
+
+	svc := NewAttendeeService(
+		&mockConferenceRepository{
+			getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil },
+		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, _ int64, _ int64) (bool, error) { return true, nil },
+		},
+		&mockBookingRepository{
+			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{
+					{ID: 1, RoomID: room.ID, UserID: 20, ConferenceID: conf.ID, Notes: "Vegan"},
+				}, nil
+			},
+		},
+		&mockRoomRepository{
+			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Room, error) { return []*models.Room{room}, nil },
+		},
+		&mockUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id, DisplayName: "Alice", Email: "alice@test.dev"}, nil
+			},
+		},
+	)
+
+	csvData, err := svc.ExportConferenceBookingsCSV(context.Background(), conf.Slug, 99, false)
+	require.NoError(t, err)
+	output := string(csvData)
+	assert.Contains(t, output, "name,email,room,dates,dietary/special notes")
+	assert.Contains(t, output, "Alice,alice@test.dev,101,2026-10-07 to 2026-10-10,Vegan")
+}
+
+func TestAttendeeService_ExportConferenceBookingsCSV_IncludeCancelled(t *testing.T) {
+	conf := testConference()
+	room := testRoom(1, conf.ID, "101", 2)
+	includeCalled := false
+
+	svc := NewAttendeeService(
+		&mockConferenceRepository{
+			getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil },
+		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, _ int64, _ int64) (bool, error) { return true, nil },
+		},
+		&mockBookingRepository{
+			listByConferenceIncludingCancelledFn: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				includeCalled = true
+				return []*models.Booking{
+					{ID: 1, RoomID: room.ID, UserID: 20, ConferenceID: conf.ID, Notes: "Wheelchair", Status: models.BookingStatusCancelled},
+				}, nil
+			},
+		},
+		&mockRoomRepository{
+			listByConferenceFn: func(_ context.Context, _ int64) ([]*models.Room, error) { return []*models.Room{room}, nil },
+		},
+		&mockUserRepository{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				return &models.User{ID: id, DisplayName: "Bob", Email: "bob@test.dev"}, nil
+			},
+		},
+	)
+
+	csvData, err := svc.ExportConferenceBookingsCSV(context.Background(), conf.Slug, 99, true)
+	require.NoError(t, err)
+	assert.True(t, includeCalled)
+	assert.Contains(t, string(csvData), "Bob,bob@test.dev,101")
+}
+
+func TestAttendeeService_ExportConferenceBookingsCSV_Forbidden(t *testing.T) {
+	conf := testConference()
+	svc := NewAttendeeService(
+		&mockConferenceRepository{
+			getBySlugFn: func(_ context.Context, _ string) (*models.Conference, error) { return conf, nil },
+		},
+		&mockOrganizerRepository{
+			isOrganizerFn: func(_ context.Context, _ int64, _ int64) (bool, error) { return false, nil },
+		},
+		&mockBookingRepository{},
+		&mockRoomRepository{},
+		&mockUserRepository{},
+	)
+
+	_, err := svc.ExportConferenceBookingsCSV(context.Background(), conf.Slug, 42, false)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrOrganizerForbidden)
 }

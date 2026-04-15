@@ -374,6 +374,39 @@ func (ac *AuthenticatedClient) GetOrganizerDashboard(ctx context.Context, slug s
 	return retryDashboard, nil
 }
 
+// ExportConferenceBookingsCSV fetches conference export CSV, auto-refreshing the access token on 401.
+func (ac *AuthenticatedClient) ExportConferenceBookingsCSV(ctx context.Context, slug string, includeCancelled bool) ([]byte, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "ExportConferenceBookingsCSV")
+
+	exportedCSV, err := ac.client.ExportConferenceBookingsCSV(ctx, accessToken, slug, includeCancelled)
+	if err == nil {
+		return exportedCSV, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "ExportConferenceBookingsCSV")
+
+	retryCSV, retryErr := ac.client.ExportConferenceBookingsCSV(ctx, newAccessToken, slug, includeCancelled)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to export conference bookings after token refresh: %w", retryErr)
+	}
+
+	return retryCSV, nil
+}
+
 // CreateConference creates a conference, automatically refreshing the access token on 401.
 func (ac *AuthenticatedClient) CreateConference(ctx context.Context, input CreateConferenceRequest) (*ConferenceResponse, error) {
 	accessToken, err := ac.store.GetAccessToken()

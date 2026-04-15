@@ -1,0 +1,72 @@
+schema: 1
+story: '5.7'
+story_title: 'Story 5.7: CSV Export'
+gate: PASS
+status_reason: 'CSV export is correctly implemented end-to-end with organizer authorization, include-cancelled behavior, and validated CLI/API/service/repository/client test coverage.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-15T00:00:00Z'
+quality_score: 95
+expires: '2026-04-29T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 16
+    suites:
+      - 'internal/cli/export.go'
+      - 'internal/cli/export_test.go'
+      - 'internal/cli/root.go'
+      - 'internal/cli/root_test.go'
+      - 'internal/api/routes.go'
+      - 'internal/api/routes_test.go'
+      - 'internal/api/handlers/attendees.go'
+      - 'internal/api/handlers/attendees_test.go'
+      - 'internal/service/attendee_service.go'
+      - 'internal/service/attendee_service_test.go'
+      - 'internal/repository/interfaces.go'
+      - 'internal/repository/sqlite/booking_repository.go'
+      - 'internal/repository/sqlite/booking_repository_test.go'
+      - 'internal/client/export.go'
+      - 'internal/client/export_test.go'
+      - 'internal/client/auth_client_test.go'
+  tests_executed:
+    - 'go test ./...'
+    - 'make lint'
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 1
+  recommendations:
+    must_fix: []
+    monitor:
+      - 'PERF-5.7-001: CSV export currently resolves users per booking row in service logic (N+1 pattern). Monitor for large conference sizes; optimize with joined projection if export latency becomes material.'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Export route is organizer-protected via middleware and service-level organizer checks; non-organizers return forbidden.'
+  performance:
+    status: PASS
+    notes: 'Current implementation is suitable for MVP traffic; single low-risk monitor item noted for potential large-export optimization.'
+  reliability:
+    status: PASS
+    notes: 'Coverage includes default/flagged cancellation filtering, error mapping, and authenticated client token refresh retry path.'
+  maintainability:
+    status: PASS
+    notes: 'Layer boundaries are preserved (CLI/client/API/service/repository) with focused tests at each layer.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Consider repository/service projection that returns export rows with joined user/room data to avoid per-row user lookups at larger scales.'
+      refs: ['internal/service/attendee_service.go:370', 'internal/repository/sqlite/booking_repository.go:93']

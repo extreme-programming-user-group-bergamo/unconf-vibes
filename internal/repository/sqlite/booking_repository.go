@@ -90,6 +90,17 @@ func (r *BookingRepository) ListByConference(ctx context.Context, conferenceID i
 	return r.listBookings(ctx, query, conferenceID)
 }
 
+func (r *BookingRepository) ListByConferenceIncludingCancelled(ctx context.Context, conferenceID int64) ([]*models.Booking, error) {
+	query := `
+		SELECT id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at
+		FROM bookings
+		WHERE conference_id = ?
+		ORDER BY created_at
+	`
+
+	return r.listBookings(ctx, query, conferenceID)
+}
+
 func (r *BookingRepository) ListByUser(ctx context.Context, userID int64) ([]*models.Booking, error) {
 	query := `
 		SELECT id, room_id, user_id, conference_id, status, privacy_setting, notes, created_at, confirmed_at, cancelled_at

@@ -65,16 +65,24 @@ func (m *mockRoomRepository) DeleteByConferenceAndNumber(ctx context.Context, co
 }
 
 type mockBookingRepository struct {
-	listByConferenceFn  func(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
-	listByRoomFn        func(ctx context.Context, roomID int64) ([]*models.Booking, error)
-	countByConferenceFn func(ctx context.Context, conferenceID int64) (int, error)
-	getByIDFn           func(ctx context.Context, id int64) (*models.Booking, error)
-	createFn            func(ctx context.Context, booking *models.Booking) (*models.Booking, error)
+	listByConferenceFn                   func(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
+	listByConferenceIncludingCancelledFn func(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
+	listByRoomFn                         func(ctx context.Context, roomID int64) ([]*models.Booking, error)
+	countByConferenceFn                  func(ctx context.Context, conferenceID int64) (int, error)
+	getByIDFn                            func(ctx context.Context, id int64) (*models.Booking, error)
+	createFn                             func(ctx context.Context, booking *models.Booking) (*models.Booking, error)
 }
 
 func (m *mockBookingRepository) ListByConference(ctx context.Context, conferenceID int64) ([]*models.Booking, error) {
 	if m.listByConferenceFn != nil {
 		return m.listByConferenceFn(ctx, conferenceID)
+	}
+	return []*models.Booking{}, nil
+}
+
+func (m *mockBookingRepository) ListByConferenceIncludingCancelled(ctx context.Context, conferenceID int64) ([]*models.Booking, error) {
+	if m.listByConferenceIncludingCancelledFn != nil {
+		return m.listByConferenceIncludingCancelledFn(ctx, conferenceID)
 	}
 	return []*models.Booking{}, nil
 }

@@ -51,6 +51,7 @@ type BookingRepository interface {
 	GetByID(ctx context.Context, id int64) (*models.Booking, error)
 	ListByRoom(ctx context.Context, roomID int64) ([]*models.Booking, error)
 	ListByConference(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
+	ListByConferenceIncludingCancelled(ctx context.Context, conferenceID int64) ([]*models.Booking, error)
 	CountByConference(ctx context.Context, conferenceID int64) (int, error)
 }
 
