@@ -1476,6 +1476,187 @@ func TestPutRequestsDecline_UpdatesStatusOnly(t *testing.T) {
 	assert.ErrorIs(t, err, repository.ErrBookingNotFound)
 }
 
+func TestPostBookings_CreatesBookingAndUpdatesReadModels(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	booker := createTestUserWithName(t, db, "gh-book-create", "book-create@test.com", "Booker", "public")
+	roommate := createTestUserWithName(t, db, "gh-book-roommate", "book-roommate@test.com", "Roommate", "public")
+
+	createTestConference(t, db, "conf-book-create", "Book Create",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-book-create")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "205", "double", 120, 2)
+	createTestBooking(t, db, room.ID, roommate.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	token, _ := createTestSession(t, db, booker.ID, tokenService)
+	reqBody := `{"room_id":` + jsonNumber(room.ID) + `,"conference_id":` + jsonNumber(conf.ID) + `,"privacy_setting":"private","notes":"Late arrival"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/bookings", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	var created map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
+	assert.Equal(t, "requested", created["status"])
+	assert.Equal(t, "private", created["privacy_setting"])
+	assert.Equal(t, "Late arrival", created["notes"])
+	roomBody := created["room"].(map[string]interface{})
+	assert.Equal(t, "205", roomBody["room_number"])
+	assert.Equal(t, float64(2), roomBody["spots_taken"])
+	assert.Equal(t, float64(0), roomBody["spots_available"])
+	conferenceBody := created["conference"].(map[string]interface{})
+	assert.Equal(t, "conf-book-create", conferenceBody["slug"])
+	roommatesBody := created["roommates"].([]interface{})
+	require.Len(t, roommatesBody, 1)
+	roommateBody := roommatesBody[0].(map[string]interface{})
+	assert.Equal(t, "Roommate", roommateBody["display_name"])
+	assert.Equal(t, "public", roommateBody["privacy_setting"])
+
+	bookingsReq, err := http.NewRequest(http.MethodGet, srv.URL+"/bookings", nil)
+	require.NoError(t, err)
+	bookingsReq.Header.Set("Authorization", "Bearer "+token)
+	bookingsResp, err := http.DefaultClient.Do(bookingsReq)
+	require.NoError(t, err)
+	defer func() { _ = bookingsResp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, bookingsResp.StatusCode)
+
+	var bookings []map[string]interface{}
+	require.NoError(t, json.NewDecoder(bookingsResp.Body).Decode(&bookings))
+	require.Len(t, bookings, 1)
+	assert.Equal(t, "requested", bookings[0]["status"])
+
+	roomsResp, err := http.Get(srv.URL + "/conferences/conf-book-create/rooms")
+	require.NoError(t, err)
+	defer func() { _ = roomsResp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, roomsResp.StatusCode)
+
+	var rooms []map[string]interface{}
+	require.NoError(t, json.NewDecoder(roomsResp.Body).Decode(&rooms))
+	require.Len(t, rooms, 1)
+	assert.Equal(t, float64(2), rooms[0]["spots_taken"])
+	assert.Equal(t, float64(0), rooms[0]["spots_available"])
+}
+
+func TestPostBookings_RoomFullReturnsConflict(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	booker := createTestUserWithName(t, db, "gh-book-full", "book-full@test.com", "Booker", "public")
+	occupant := createTestUserWithName(t, db, "gh-book-full-occupant", "book-full-occupant@test.com", "Occupant", "public")
+
+	createTestConference(t, db, "conf-book-full", "Book Full",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-book-full")
+	require.NoError(t, err)
+	room := createTestRoom(t, db, conf.ID, "206", "single", 120, 1)
+	createTestBooking(t, db, room.ID, occupant.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	token, _ := createTestSession(t, db, booker.ID, tokenService)
+	reqBody := `{"room_id":` + jsonNumber(room.ID) + `,"conference_id":` + jsonNumber(conf.ID) + `,"privacy_setting":"public"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/bookings", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "room_full", body["error"].(map[string]interface{})["code"])
+}
+
+func TestPostBookings_AlreadyBookedReturnsConflict(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	booker := createTestUserWithName(t, db, "gh-book-existing", "book-existing@test.com", "Booker", "public")
+
+	createTestConference(t, db, "conf-book-existing", "Book Existing",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-book-existing")
+	require.NoError(t, err)
+	roomOne := createTestRoom(t, db, conf.ID, "207", "double", 120, 2)
+	roomTwo := createTestRoom(t, db, conf.ID, "208", "double", 120, 2)
+	createTestBooking(t, db, roomOne.ID, booker.ID, conf.ID, models.BookingStatusConfirmed, "public")
+
+	token, _ := createTestSession(t, db, booker.ID, tokenService)
+	reqBody := `{"room_id":` + jsonNumber(roomTwo.ID) + `,"conference_id":` + jsonNumber(conf.ID) + `,"privacy_setting":"public"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/bookings", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "already_booked", body["error"].(map[string]interface{})["code"])
+}
+
+func TestPostBookings_RoomNotFoundReturns404(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	booker := createTestUserWithName(t, db, "gh-book-missing", "book-missing@test.com", "Booker", "public")
+
+	createTestConference(t, db, "conf-book-missing", "Book Missing",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	conf, err := confRepo.GetBySlug(context.Background(), "conf-book-missing")
+	require.NoError(t, err)
+
+	token, _ := createTestSession(t, db, booker.ID, tokenService)
+	reqBody := `{"room_id":9999,"conference_id":` + jsonNumber(conf.ID) + `,"privacy_setting":"public"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/bookings", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "not_found", body["error"].(map[string]interface{})["code"])
+}
+
+func TestPostBookings_RoomFromDifferentConferenceReturns404(t *testing.T) {
+	srv, tokenService, db := setupIntegrationRouter(t)
+	booker := createTestUserWithName(t, db, "gh-book-other-conf", "book-other-conf@test.com", "Booker", "public")
+
+	createTestConference(t, db, "conf-book-home", "Book Home",
+		time.Now().Add(30*24*time.Hour), time.Now().Add(33*24*time.Hour))
+	createTestConference(t, db, "conf-book-away", "Book Away",
+		time.Now().Add(40*24*time.Hour), time.Now().Add(43*24*time.Hour))
+	confRepo := sqlite.NewConferenceRepository(db)
+	homeConf, err := confRepo.GetBySlug(context.Background(), "conf-book-home")
+	require.NoError(t, err)
+	awayConf, err := confRepo.GetBySlug(context.Background(), "conf-book-away")
+	require.NoError(t, err)
+	awayRoom := createTestRoom(t, db, awayConf.ID, "209", "double", 120, 2)
+
+	token, _ := createTestSession(t, db, booker.ID, tokenService)
+	reqBody := `{"room_id":` + jsonNumber(awayRoom.ID) + `,"conference_id":` + jsonNumber(homeConf.ID) + `,"privacy_setting":"public"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/bookings", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "not_found", body["error"].(map[string]interface{})["code"])
+}
+
 func TestDeleteBookings_CancelsBookingAndPreservesRoommate(t *testing.T) {
 	srv, tokenService, db := setupIntegrationRouter(t)
 	canceller := createTestUserWithName(t, db, "gh-cancel-owner", "cancel-owner@test.com", "Canceller", "public")

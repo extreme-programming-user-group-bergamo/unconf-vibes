@@ -111,7 +111,7 @@ unconf/
 
 - `configs/` exists in the repository but does not currently contain committed configuration files.
 - `bin/` contains built artifacts and is not source-of-truth code.
-- The router currently wires `GET /bookings` and `DELETE /bookings/{id}` only; client and TUI booking creation support exists separately and still needs server route registration.
+- The router wires the attendee booking lifecycle endpoints: `POST /bookings`, `GET /bookings`, and `DELETE /bookings/{id}`.
 - Older placeholders such as `/pkg`, `/scripts`, `docker-compose.yml`, and `fly.toml` are not present in the current repository.
 
 ## Key Directories

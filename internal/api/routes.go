@@ -100,6 +100,7 @@ func NewRouter(
 		}
 
 		if bookingHandler != nil {
+			protected.POST("/bookings", bookingHandler.Create)
 			protected.GET("/bookings", bookingHandler.List)
 			protected.DELETE("/bookings/:id", bookingHandler.Cancel)
 		}

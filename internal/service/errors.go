@@ -25,6 +25,7 @@ var (
 	ErrRoomHasBookings          = errors.New("room has existing bookings")
 	ErrInvalidRoomInput         = errors.New("invalid room input")
 	ErrRoomFull                 = errors.New("room is full")
+	ErrAlreadyBooked            = errors.New("user already has a booking for this conference")
 	ErrBookingNotFound          = errors.New("booking not found")
 	ErrBookingForbidden         = errors.New("booking is not owned by user")
 	ErrCannotRequestSelf        = errors.New("cannot request yourself")

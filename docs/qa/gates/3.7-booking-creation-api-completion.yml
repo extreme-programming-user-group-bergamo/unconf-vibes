@@ -1,0 +1,77 @@
+schema: 1
+story: '3.7'
+story_title: 'Story 3.7: Booking Creation API Completion'
+gate: PASS
+status_reason: 'AC2 is now evidenced by direct CLI and wizard tests that run against the in-memory application router/server harness; the only remaining concern is the accepted pre-existing non-atomic room-capacity race under concurrent booking requests.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-04-15T14:25:00Z'
+quality_score: 94
+expires: '2026-04-29T14:25:00Z'
+
+top_issues:
+  - id: 'DATA-3.7-001'
+    severity: medium
+    finding: 'Room capacity is still enforced with a read-then-insert sequence in BookingService.CreateBooking, so two concurrent last-spot requests can still overbook a room through POST /bookings.'
+    suggested_action: 'Track the accepted architectural follow-up to move capacity enforcement into a transactional repository operation and add a concurrent booking regression test.'
+    suggested_owner: dev
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 8
+    suites:
+      - 'internal/api/handlers/bookings.go'
+      - 'internal/api/handlers/bookings_test.go'
+      - 'internal/api/routes.go'
+      - 'internal/api/routes_test.go'
+      - 'internal/service/booking_service.go'
+      - 'internal/service/booking_service_test.go'
+      - 'internal/cli/book_test.go'
+      - 'internal/tui/wizard/model_test.go'
+  tests_executed:
+    - 'go test ./internal/cli -run TestBookCmd_CreatesBookingAgainstRunningServer'
+    - 'go test ./internal/tui/wizard -run TestModel_SubmitsBookingAgainstRunningServer'
+    - 'go test ./internal/cli ./internal/tui/wizard ./internal/service ./internal/api ./internal/client'
+    - 'make test'
+    - 'make lint'
+  risks_identified:
+    count: 1
+  trace:
+    ac_covered: [1, 2, 3, 4]
+    ac_gaps: []
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 0
+  recommendations:
+    must_fix: []
+    monitor: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Authenticated create/list/cancel boundaries remain intact and no new authorization bypass was found in the reviewed changes.'
+  performance:
+    status: PASS
+    notes: 'Route exposure and response projection changes are lightweight; no material runtime regression was identified in the reviewed scope.'
+  reliability:
+    status: CONCERNS
+    notes: 'Serial attendee flows are now evidenced through real router-backed CLI and wizard submission tests, but capacity enforcement is still non-atomic under concurrent create requests.'
+  maintainability:
+    status: PASS
+    notes: 'Implementation stays within existing handler/service/repository boundaries and adds focused regression coverage without new composition patterns.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Replace the read-then-insert capacity check with a transactional booking-create path and cover it with a concurrent last-spot test.'
+      refs:
+        - 'internal/service/booking_service.go'
+        - 'migrations/5_bookings.up.sql'
+        - 'docs/qa/assessments/project-risk-profile-20260131.md'
+      suggested_owner: dev

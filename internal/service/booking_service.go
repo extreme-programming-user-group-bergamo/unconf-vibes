@@ -12,10 +12,17 @@ import (
 	"github.com/katurdays/unconf/internal/repository"
 )
 
+var validBookingPrivacySettings = map[string]bool{
+	"public":  true,
+	"private": true,
+}
+
 type bookingRepository interface {
+	Create(ctx context.Context, booking *models.Booking) (*models.Booking, error)
 	GetByID(ctx context.Context, id int64) (*models.Booking, error)
 	ListByRoom(ctx context.Context, roomID int64) ([]*models.Booking, error)
 	ListByUser(ctx context.Context, userID int64) ([]*models.Booking, error)
+	GetActiveByUserAndConference(ctx context.Context, userID, conferenceID int64) (*models.Booking, error)
 	Cancel(ctx context.Context, bookingID int64) (*models.Booking, error)
 	CancelAndCancelPendingOutgoingRequests(ctx context.Context, bookingID, userID int64) (*models.Booking, int64, error)
 }
@@ -67,6 +74,13 @@ type BookingResponse struct {
 	Roommates      []BookingRoommateResponse `json:"roommates"`
 }
 
+type CreateBookingInput struct {
+	RoomID         int64  `json:"room_id"`
+	ConferenceID   int64  `json:"conference_id"`
+	PrivacySetting string `json:"privacy_setting"`
+	Notes          string `json:"notes,omitempty"`
+}
+
 func NewBookingService(
 	bookingRepo bookingRepository,
 	roomRepo repository.RoomRepository,
@@ -88,6 +102,79 @@ func NewBookingService(
 	}
 }
 
+func (s *BookingService) CreateBooking(ctx context.Context, userID int64, input CreateBookingInput) (*BookingResponse, error) {
+	privacySetting := strings.ToLower(strings.TrimSpace(input.PrivacySetting))
+	if !validBookingPrivacySettings[privacySetting] {
+		return nil, fmt.Errorf("failed to create booking: %w", ErrInvalidPrivacySetting)
+	}
+
+	room, err := s.roomRepo.GetByID(ctx, input.RoomID)
+	if err != nil {
+		if errors.Is(err, repository.ErrRoomNotFound) {
+			return nil, fmt.Errorf("failed to create booking: %w", ErrRoomNotFound)
+		}
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	if room.ConferenceID != input.ConferenceID {
+		return nil, fmt.Errorf("failed to create booking: %w", ErrRoomNotFound)
+	}
+
+	activeBooking, err := s.bookingRepo.GetActiveByUserAndConference(ctx, userID, input.ConferenceID)
+	if err != nil && !errors.Is(err, repository.ErrBookingNotFound) {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+	if activeBooking != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", ErrAlreadyBooked)
+	}
+
+	roomBookings, err := s.bookingRepo.ListByRoom(ctx, input.RoomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+	if len(roomBookings) >= room.Capacity {
+		return nil, fmt.Errorf("failed to create booking: %w", ErrRoomFull)
+	}
+
+	created, err := s.bookingRepo.Create(ctx, &models.Booking{
+		RoomID:         input.RoomID,
+		UserID:         userID,
+		ConferenceID:   input.ConferenceID,
+		Status:         models.BookingStatusRequested,
+		PrivacySetting: privacySetting,
+		Notes:          strings.TrimSpace(input.Notes),
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrBookingExists) {
+			return nil, fmt.Errorf("failed to create booking: %w", ErrAlreadyBooked)
+		}
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	if s.notifier != nil {
+		if notifyErr := s.notifier.NotifyBookingCreated(ctx, created); notifyErr != nil {
+			slog.Error("failed to send hotel booking creation email",
+				"error", notifyErr,
+				"booking_id", created.ID,
+				"conference_id", created.ConferenceID,
+				"user_id", userID,
+			)
+		}
+	}
+
+	conferencesByID, err := s.loadConferencesByID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	result, err := s.buildBookingResponse(ctx, created, conferencesByID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (s *BookingService) ListBookings(ctx context.Context, userID int64) ([]BookingResponse, error) {
 	bookings, err := s.bookingRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -98,14 +185,9 @@ func (s *BookingService) ListBookings(ctx context.Context, userID int64) ([]Book
 		return []BookingResponse{}, nil
 	}
 
-	conferences, err := s.confRepo.List(ctx)
+	conferencesByID, err := s.loadConferencesByID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list bookings: failed to load conferences: %w", err)
-	}
-
-	conferencesByID := make(map[int64]*models.Conference, len(conferences))
-	for i := range conferences {
-		conferencesByID[conferences[i].ID] = conferences[i]
+		return nil, fmt.Errorf("failed to list bookings: %w", err)
 	}
 
 	response := make([]BookingResponse, 0, len(bookings))
@@ -176,13 +258,9 @@ func (s *BookingService) CancelBooking(ctx context.Context, userID int64, bookin
 		"cancelled_pending_outgoing_requests", cancelledCount,
 	)
 
-	conferences, err := s.confRepo.List(ctx)
+	conferencesByID, err := s.loadConferencesByID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cancel booking: failed to load conferences: %w", err)
-	}
-	conferencesByID := make(map[int64]*models.Conference, len(conferences))
-	for i := range conferences {
-		conferencesByID[conferences[i].ID] = conferences[i]
+		return nil, fmt.Errorf("failed to cancel booking: %w", err)
 	}
 
 	result, err := s.buildBookingResponse(ctx, cancelledBooking, conferencesByID)
@@ -191,6 +269,20 @@ func (s *BookingService) CancelBooking(ctx context.Context, userID int64, bookin
 	}
 
 	return &result, nil
+}
+
+func (s *BookingService) loadConferencesByID(ctx context.Context) (map[int64]*models.Conference, error) {
+	conferences, err := s.confRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load conferences: %w", err)
+	}
+
+	conferencesByID := make(map[int64]*models.Conference, len(conferences))
+	for i := range conferences {
+		conferencesByID[conferences[i].ID] = conferences[i]
+	}
+
+	return conferencesByID, nil
 }
 
 func (s *BookingService) buildBookingResponse(

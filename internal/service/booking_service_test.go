@@ -13,11 +13,21 @@ import (
 )
 
 type mockBookingServiceBookingRepo struct {
+	createFn               func(context.Context, *models.Booking) (*models.Booking, error)
 	getByIDFn              func(context.Context, int64) (*models.Booking, error)
 	listByRoom             func(context.Context, int64) ([]*models.Booking, error)
 	listByUser             func(context.Context, int64) ([]*models.Booking, error)
+	getActiveByUserConfFn  func(context.Context, int64, int64) (*models.Booking, error)
 	cancelFn               func(context.Context, int64) (*models.Booking, error)
 	cancelAndRequestsTxnFn func(context.Context, int64, int64) (*models.Booking, int64, error)
+}
+
+func (m *mockBookingServiceBookingRepo) Create(ctx context.Context, booking *models.Booking) (*models.Booking, error) {
+	if m.createFn == nil {
+		return nil, nil
+	}
+
+	return m.createFn(ctx, booking)
 }
 
 func (m *mockBookingServiceBookingRepo) GetByID(ctx context.Context, id int64) (*models.Booking, error) {
@@ -28,6 +38,13 @@ func (m *mockBookingServiceBookingRepo) ListByRoom(ctx context.Context, roomID i
 }
 func (m *mockBookingServiceBookingRepo) ListByUser(ctx context.Context, userID int64) ([]*models.Booking, error) {
 	return m.listByUser(ctx, userID)
+}
+func (m *mockBookingServiceBookingRepo) GetActiveByUserAndConference(ctx context.Context, userID int64, conferenceID int64) (*models.Booking, error) {
+	if m.getActiveByUserConfFn == nil {
+		return nil, repository.ErrBookingNotFound
+	}
+
+	return m.getActiveByUserConfFn(ctx, userID, conferenceID)
 }
 func (m *mockBookingServiceBookingRepo) Cancel(ctx context.Context, bookingID int64) (*models.Booking, error) {
 	return m.cancelFn(ctx, bookingID)
@@ -88,11 +105,16 @@ type mockBookingServiceUserRepo struct {
 }
 
 type mockBookingNotifier struct {
+	createFn func(context.Context, *models.Booking) error
 	cancelFn func(context.Context, *models.Booking) error
 }
 
-func (m *mockBookingNotifier) NotifyBookingCreated(context.Context, *models.Booking) error {
-	return nil
+func (m *mockBookingNotifier) NotifyBookingCreated(ctx context.Context, booking *models.Booking) error {
+	if m.createFn == nil {
+		return nil
+	}
+
+	return m.createFn(ctx, booking)
 }
 
 func (m *mockBookingNotifier) NotifyBookingCancelled(ctx context.Context, booking *models.Booking) error {
@@ -114,6 +136,246 @@ func (m *mockBookingServiceUserRepo) GetByGitHubID(context.Context, string) (*mo
 }
 func (m *mockBookingServiceUserRepo) Update(context.Context, *models.User) (*models.User, error) {
 	panic("not implemented")
+}
+
+func TestBookingService_CreateBooking_Success(t *testing.T) {
+	now := time.Now().UTC()
+	createdAt := now.Add(time.Minute)
+	created := false
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			createFn: func(_ context.Context, booking *models.Booking) (*models.Booking, error) {
+				created = true
+				assert.Equal(t, int64(11), booking.RoomID)
+				assert.Equal(t, int64(7), booking.UserID)
+				assert.Equal(t, int64(3), booking.ConferenceID)
+				assert.Equal(t, models.BookingStatusRequested, booking.Status)
+				assert.Equal(t, "private", booking.PrivacySetting)
+				assert.Equal(t, "Late arrival", booking.Notes)
+				return &models.Booking{
+					ID:             41,
+					RoomID:         booking.RoomID,
+					UserID:         booking.UserID,
+					ConferenceID:   booking.ConferenceID,
+					Status:         booking.Status,
+					PrivacySetting: booking.PrivacySetting,
+					Notes:          booking.Notes,
+					CreatedAt:      createdAt,
+				}, nil
+			},
+			getByIDFn: func(_ context.Context, _ int64) (*models.Booking, error) { return nil, errors.New("unused") },
+			listByRoom: func(_ context.Context, roomID int64) ([]*models.Booking, error) {
+				assert.Equal(t, int64(11), roomID)
+				if created {
+					return []*models.Booking{
+						{ID: 9, UserID: 8, RoomID: 11, ConferenceID: 3, PrivacySetting: "public"},
+						{ID: 41, UserID: 7, RoomID: 11, ConferenceID: 3, PrivacySetting: "private"},
+					}, nil
+				}
+				return []*models.Booking{{ID: 9, UserID: 8, RoomID: 11, ConferenceID: 3, PrivacySetting: "public"}}, nil
+			},
+			listByUser: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+			getActiveByUserConfFn: func(_ context.Context, userID, conferenceID int64) (*models.Booking, error) {
+				assert.Equal(t, int64(7), userID)
+				assert.Equal(t, int64(3), conferenceID)
+				return nil, repository.ErrBookingNotFound
+			},
+			cancelFn: func(_ context.Context, _ int64) (*models.Booking, error) { return nil, errors.New("unused") },
+			cancelAndRequestsTxnFn: func(_ context.Context, _, _ int64) (*models.Booking, int64, error) {
+				return nil, 0, errors.New("unused")
+			},
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				assert.Equal(t, int64(11), id)
+				return &models.Room{ID: id, ConferenceID: 3, RoomNumber: "204", RoomType: "double", PricePerNight: 120, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{
+			listFn: func(_ context.Context) ([]*models.Conference, error) {
+				return []*models.Conference{{ID: 3, Slug: "socrates-26", Name: "SoCraTes", StartDate: now, EndDate: now.Add(24 * time.Hour)}}, nil
+			},
+		},
+		&mockBookingServiceUserRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.User, error) {
+				assert.Equal(t, int64(8), id)
+				return &models.User{ID: id, DisplayName: "Roommate"}, nil
+			},
+		},
+		&mockBookingNotifier{
+			createFn: func(_ context.Context, booking *models.Booking) error {
+				assert.Equal(t, int64(41), booking.ID)
+				return nil
+			},
+		},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: " private ",
+		Notes:          "  Late arrival  ",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int64(41), result.ID)
+	assert.Equal(t, "requested", result.Status)
+	assert.Equal(t, "private", result.PrivacySetting)
+	assert.Equal(t, "Late arrival", result.Notes)
+	assert.Equal(t, "socrates-26", result.ConferenceSlug)
+	assert.Equal(t, "204", result.Room.RoomNumber)
+	assert.Equal(t, 2, result.Room.SpotsTaken)
+	assert.Equal(t, 0, result.Room.SpotsAvailable)
+	assert.Len(t, result.Roommates, 1)
+	assert.Equal(t, "Roommate", result.Roommates[0].DisplayName)
+}
+
+func TestBookingService_CreateBooking_InvalidPrivacySetting(t *testing.T) {
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{},
+		&mockBookingServiceRoomRepo{getByIDFn: func(_ context.Context, _ int64) (*models.Room, error) { return nil, errors.New("unused") }},
+		&mockBookingServiceConferenceRepo{listFn: func(_ context.Context) ([]*models.Conference, error) { return nil, nil }},
+		&mockBookingServiceUserRepo{getByIDFn: func(_ context.Context, _ int64) (*models.User, error) { return nil, nil }},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: "connections_only",
+	})
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidPrivacySetting)
+}
+
+func TestBookingService_CreateBooking_RoomBelongsToDifferentConference(t *testing.T) {
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, ConferenceID: 99, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{listFn: func(_ context.Context) ([]*models.Conference, error) { return nil, nil }},
+		&mockBookingServiceUserRepo{getByIDFn: func(_ context.Context, _ int64) (*models.User, error) { return nil, nil }},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: "public",
+	})
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomNotFound)
+}
+
+func TestBookingService_CreateBooking_AlreadyBooked(t *testing.T) {
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			getActiveByUserConfFn: func(_ context.Context, userID, conferenceID int64) (*models.Booking, error) {
+				assert.Equal(t, int64(7), userID)
+				assert.Equal(t, int64(3), conferenceID)
+				return &models.Booking{ID: 12, UserID: 7, ConferenceID: 3, RoomID: 11, Status: models.BookingStatusConfirmed}, nil
+			},
+			listByRoom: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+			listByUser: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+			getByIDFn:  func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelFn:   func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelAndRequestsTxnFn: func(_ context.Context, _, _ int64) (*models.Booking, int64, error) {
+				return nil, 0, nil
+			},
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, ConferenceID: 3, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{listFn: func(_ context.Context) ([]*models.Conference, error) { return nil, nil }},
+		&mockBookingServiceUserRepo{getByIDFn: func(_ context.Context, _ int64) (*models.User, error) { return nil, nil }},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: "private",
+	})
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrAlreadyBooked)
+}
+
+func TestBookingService_CreateBooking_RoomFull(t *testing.T) {
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			listByRoom: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{{ID: 1}, {ID: 2}}, nil
+			},
+			listByUser: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+			getActiveByUserConfFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, repository.ErrBookingNotFound
+			},
+			getByIDFn: func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelFn:  func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelAndRequestsTxnFn: func(_ context.Context, _, _ int64) (*models.Booking, int64, error) {
+				return nil, 0, nil
+			},
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, ConferenceID: 3, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{listFn: func(_ context.Context) ([]*models.Conference, error) { return nil, nil }},
+		&mockBookingServiceUserRepo{getByIDFn: func(_ context.Context, _ int64) (*models.User, error) { return nil, nil }},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: "public",
+	})
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRoomFull)
+}
+
+func TestBookingService_CreateBooking_RepositoryConflictMapsToAlreadyBooked(t *testing.T) {
+	svc := NewBookingService(
+		&mockBookingServiceBookingRepo{
+			createFn: func(_ context.Context, _ *models.Booking) (*models.Booking, error) {
+				return nil, repository.ErrBookingExists
+			},
+			listByRoom: func(_ context.Context, _ int64) ([]*models.Booking, error) {
+				return []*models.Booking{}, nil
+			},
+			listByUser: func(_ context.Context, _ int64) ([]*models.Booking, error) { return nil, nil },
+			getActiveByUserConfFn: func(_ context.Context, _, _ int64) (*models.Booking, error) {
+				return nil, repository.ErrBookingNotFound
+			},
+			getByIDFn: func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelFn:  func(_ context.Context, _ int64) (*models.Booking, error) { return nil, nil },
+			cancelAndRequestsTxnFn: func(_ context.Context, _, _ int64) (*models.Booking, int64, error) {
+				return nil, 0, nil
+			},
+		},
+		&mockBookingServiceRoomRepo{
+			getByIDFn: func(_ context.Context, id int64) (*models.Room, error) {
+				return &models.Room{ID: id, ConferenceID: 3, Capacity: 2}, nil
+			},
+		},
+		&mockBookingServiceConferenceRepo{listFn: func(_ context.Context) ([]*models.Conference, error) { return nil, nil }},
+		&mockBookingServiceUserRepo{getByIDFn: func(_ context.Context, _ int64) (*models.User, error) { return nil, nil }},
+	)
+
+	result, err := svc.CreateBooking(context.Background(), 7, CreateBookingInput{
+		RoomID:         11,
+		ConferenceID:   3,
+		PrivacySetting: "public",
+	})
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrAlreadyBooked)
 }
 
 func TestBookingService_CancelBooking_Success(t *testing.T) {
