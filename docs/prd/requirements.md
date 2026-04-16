@@ -36,6 +36,9 @@
 - **FR21**: The system shall automatically send templated booking emails to hotels
 - **FR22**: The system shall allow organizers to export registration data as CSV
 
+### CLI Surfaces & Backend Operations
+- **FR25**: The system shall expose backend/admin operations through `unconf-server` (for example `serve` and `db status`) and keep attendee/organizer product workflows under `unconf`.
+
 ### Privacy
 - **FR23**: The system shall support two visibility tiers: Public (name visible) and Private (anonymous to other attendees)
 - **FR24**: Organizers shall always be able to see all attendee information regardless of privacy setting
@@ -48,7 +51,7 @@
 | Conference Discovery & Context | Complete | Stories 2.1 through 2.5 are implemented across API, CLI, context storage, and profile configuration |
 | Room Exploration & Booking | Partially wired end-to-end | Room explorer TUI, booking wizard UI, direct CLI booking, room listing, booking service logic, and booking client support all exist, but the live server does not currently register `POST /bookings`, which blocks new bookings against a running API |
 | Social Features & Roommates | Complete | Attendee listing, roommate requests, booking cancellation, and roommate-departure handling are implemented |
-| Organizer Features & Hotel Automation | Complete | Conference create/edit, room management, organizer dashboard, CSV export, organizer ownership flows, and hotel email automation are implemented |
+| Organizer Features & Hotel Automation | Complete | Conference create/edit, room management, organizer dashboard, CSV export, organizer ownership flows, and hotel email automation are implemented in the `unconf` product CLI surface |
 
 Follow-on implementation stories added after the initial PRD draft: **1.8**, **1.9**, **5.8**, and **5.9**.
 

@@ -2,14 +2,22 @@
 
 > Make targets for building, testing, and managing the UNCONF project. Run from the repository root.
 
+## CLI Surfaces
+
+| Binary | Ownership | Examples |
+|--------|-----------|----------|
+| `unconf` | Attendee + organizer product UX commands | `unconf login`, `unconf checkout socrates-26`, `unconf dashboard` |
+| `unconf-server` | Backend/admin operations | `unconf-server serve`, `unconf-server db status` |
+
 ## Development
 
 | Command | Description |
 |---------|-------------|
 | `make build` | Build both CLI and server binaries to `bin/` |
-| `make run-cli` | Build and run the CLI (loads `.env`) |
-| `make run-server` | Run the API server (loads `.env`) |
-| `make build-server` | Build the server binary only |
+| `make build-cli` | Build only `unconf` with `CGO_ENABLED=0` |
+| `make build-server` | Build only `unconf-server` with `CGO_ENABLED=1` |
+| `make run-cli` | Build and run `unconf` (loads `.env`) |
+| `make run-server` | Run `unconf-server serve` (loads `.env`) |
 
 ## Quality
 

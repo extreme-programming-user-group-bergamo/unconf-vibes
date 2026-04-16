@@ -10,6 +10,9 @@ UNCONF is a Go-based CLI + TUI application for unconference registration, room s
 
 ## Current Status
 
+- CLI ownership boundary for this split:
+  - `unconf`: attendee + organizer product UX commands.
+  - `unconf-server`: backend/admin operations (server runtime and database admin commands).
 - Core attendee flows are implemented: `login`, `logout`, `config`, `list`, `info`, `checkout`, `rooms`, `book`, `status`, `cancel`, `attendees`, `invite`, and `requests`.
 - Organizer flows are also implemented: `create`, `edit`, `rooms add|edit|remove|import`, `dashboard`, `export`, and organizer-assignment API endpoints.
 - Follow-on hardening stories were completed for auth/session lifecycle and status/cancel consistency.
@@ -22,7 +25,7 @@ make build
 ./bin/unconf
 ```
 
-Implemented command examples:
+Product workflow examples (`unconf`):
 
 ```bash
 unconf login
@@ -30,6 +33,13 @@ unconf checkout socrates-26
 unconf rooms
 unconf status
 unconf dashboard
+```
+
+Backend/admin examples (`unconf-server`):
+
+```bash
+unconf-server serve
+unconf-server db status
 ```
 
 ## Development Setup

@@ -24,7 +24,7 @@
 | **PASETO** | Platform-Agnostic Security Tokens — safer token format with fixed-purpose cryptography |
 | **Monorepo** | Single repository containing multiple related projects/packages (CLI + server in this case) |
 
-## UNCONF CLI Commands
+## UNCONF User/Organizer Commands
 
 | Command | Purpose |
 |---------|---------|
@@ -43,6 +43,13 @@
 | `unconf config` | Update profile settings |
 | `unconf dashboard` | Organizer dashboard TUI |
 | `unconf export` | Export CSV (organizer) |
+
+## UNCONF Server Commands
+
+| Command | Purpose |
+|---------|---------|
+| `unconf-server serve` | Start the backend API server lifecycle |
+| `unconf-server db status` | Show backend database migration status |
 
 ## API Status Codes
 

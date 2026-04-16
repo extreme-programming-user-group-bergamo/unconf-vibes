@@ -7,7 +7,7 @@ builds:
     main: ./cmd/unconf
     binary: unconf
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     targets:
       - linux_amd64
       - darwin_amd64

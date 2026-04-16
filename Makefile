@@ -1,12 +1,17 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: build test lint run-cli run-server build-server clean migrate-up migrate-down migrate-fresh docker-build release-local
+.PHONY: build build-cli build-server test lint run-cli run-server clean migrate-up migrate-down migrate-fresh docker-build release-local
 
-build:
+build: build-cli build-server
+
+build-cli:
 	mkdir -p bin
-	$(GO) build -o bin/unconf ./cmd/unconf
-	$(GO) build -o bin/unconf-server ./cmd/server
+	CGO_ENABLED=0 $(GO) build -o bin/unconf ./cmd/unconf
+
+build-server:
+	mkdir -p bin
+	CGO_ENABLED=1 $(GO) build -o bin/unconf-server ./cmd/server
 
 test:
 	$(GO) test -race ./...
@@ -14,15 +19,11 @@ test:
 lint:
 	$(GOLANGCI_LINT) run ./...
 
-run-cli: build
+run-cli: build-cli
 	set -a && . ./.env && set +a && ./bin/unconf
 
-run-server:
-	set -a && . ./.env && set +a && $(GO) run ./cmd/server
-
-build-server:
-	mkdir -p bin
-	$(GO) build -o bin/unconf-server ./cmd/server
+run-server: build-server
+	set -a && . ./.env && set +a && ./bin/unconf-server
 
 clean:
 	rm -rf bin

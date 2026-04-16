@@ -17,10 +17,10 @@ unconf/
 │       └── release.yaml          # Tagged release builds
 ├── cmd/
 │   ├── server/
-│   │   ├── main.go               # API bootstrap and dependency wiring
+│   │   ├── main.go               # `unconf-server` entry point (`serve` wiring + startup lifecycle)
 │   │   └── main_integration_test.go
 │   └── unconf/
-│       └── main.go               # CLI entry point
+│       └── main.go               # `unconf` product CLI entry point
 ├── internal/
 │   ├── api/
 │   │   ├── routes.go             # Gin route registration
@@ -32,8 +32,7 @@ unconf/
 │   │   ├── token_service.go      # PASETO issue/validate helpers
 │   │   └── store.go              # Keyring-backed token storage
 │   ├── cli/
-│   │   ├── root.go               # Root command and dependency wiring
-│   │   ├── db.go                 # Local DB helpers
+│   │   ├── root.go               # `unconf` root command and product workflow wiring
 │   │   ├── login.go / logout.go / config.go
 │   │   ├── list.go / info.go / checkout.go
 │   │   ├── rooms.go / rooms_manage.go
@@ -41,6 +40,10 @@ unconf/
 │   │   ├── attendees.go / invite.go / requests.go
 │   │   ├── create.go / edit.go / dashboard.go / export.go
 │   │   └── conference_forms.go
+│   ├── servercli/
+│   │   ├── root.go               # `unconf-server` root command and lifecycle wiring
+│   │   ├── serve.go              # API startup + graceful shutdown orchestration
+│   │   └── db.go                 # Backend/admin DB utilities (`db status`)
 │   ├── client/
 │   │   ├── client.go / auth_client.go
 │   │   ├── bookings.go / rooms.go / requests.go
@@ -111,6 +114,8 @@ unconf/
 
 - `configs/` exists in the repository but does not currently contain committed configuration files.
 - `bin/` contains built artifacts and is not source-of-truth code.
+- CLI boundary for this split: `unconf` owns attendee/organizer product workflows; `unconf-server` owns backend/admin operations such as `serve` and `db status`.
+- Server runtime + backend DB admin command ownership is in `cmd/server/main.go` + `internal/servercli/`.
 - The router wires the attendee booking lifecycle endpoints: `POST /bookings`, `GET /bookings`, and `DELETE /bookings/{id}`.
 - Older placeholders such as `/pkg`, `/scripts`, `docker-compose.yml`, and `fly.toml` are not present in the current repository.
 
@@ -119,8 +124,9 @@ unconf/
 | Directory | Purpose | When to Modify |
 |-----------|---------|----------------|
 | `.github/workflows/` | CI, release, and container smoke automation | Workflow or release changes |
-| `cmd/` | Binary entry points | Bootstrap or process lifecycle changes |
-| `internal/cli/` | CLI commands and prompts | New commands or UX changes |
+| `cmd/` | Binary entry points (`unconf`, `unconf-server`) | Bootstrap or process lifecycle changes |
+| `internal/cli/` | `unconf` product CLI commands and prompts | Attendee/organizer UX command changes |
+| `internal/servercli/` | `unconf-server` backend/admin CLI commands | Server lifecycle and backend utility changes |
 | `internal/tui/` | Bubble Tea UIs | Interactive room, wizard, or dashboard changes |
 | `internal/api/` | Router, middleware, handlers | Endpoint and auth-surface changes |
 | `internal/service/` | Business rules | Domain behavior changes |

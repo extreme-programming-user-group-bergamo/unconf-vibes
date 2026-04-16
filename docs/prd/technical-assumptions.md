@@ -18,6 +18,9 @@ A single repository with Go standard layout:
 - **CLI/TUI**: Go application using Cobra + Viper for commands, Bubble Tea + Lip Gloss for TUI
 - **Backend API**: Go + Gin (REST API), containerized with Docker
 - **Separation**: CLI makes HTTP calls to backend; backend handles all data persistence and business logic
+- **CLI surfaces**:
+  - `unconf`: attendee + organizer product workflows
+  - `unconf-server`: backend/admin operations (server lifecycle and DB diagnostics)
 
 **Rationale**: Clean separation allows CLI updates independent of backend; stateless backend enables horizontal scaling if needed.
 

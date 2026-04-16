@@ -4,8 +4,7 @@
 
 ```text
 internal/cli/
-├── root.go                # Root command and dependency wiring
-├── db.go                  # Local database and migration utilities
+├── root.go                # `unconf` root command and product workflow wiring
 ├── login.go               # unconf login
 ├── logout.go              # unconf logout
 ├── list.go                # unconf list
@@ -25,8 +24,16 @@ internal/cli/
 ├── dashboard.go           # unconf dashboard
 ├── export.go              # unconf export
 └── conference_forms.go    # Shared interactive create/edit prompts
+
+internal/servercli/
+├── root.go                # `unconf-server` root command and lifecycle wiring
+├── serve.go               # unconf-server serve
+└── db.go                  # unconf-server db status
 ```
 
+- `unconf` is the user/organizer product CLI surface.
+- `unconf-server` is the backend/admin CLI surface and defaults to `serve` when no subcommand is provided.
+- `db status` lives under `unconf-server` as backend/admin functionality.
 - `unconf rooms` is a composite surface: attendee exploration lives in `rooms.go`, while organizer room-management subcommands live in `rooms_manage.go`.
 - `unconf edit` replaces the earlier planned organizer placeholder command set; there is no standalone `confirm.go` in the current codebase.
 - The direct-booking CLI and booking wizard use the live `POST /bookings` route.

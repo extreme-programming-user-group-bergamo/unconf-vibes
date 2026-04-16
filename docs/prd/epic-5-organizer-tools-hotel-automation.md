@@ -2,6 +2,8 @@
 
 **Goal**: Provide organizer dashboard, conference management, and automated hotel email — delivering organizer commands and email integration that eliminate manual coordination overhead.
 
+**Command boundary note:** Organizer product commands in this epic remain on `unconf`. Backend/admin operations such as server lifecycle and DB diagnostics are owned by `unconf-server`.
+
 ## Story 5.1: Organizer Role & Permissions
 
 **As a** developer,  
