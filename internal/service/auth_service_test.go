@@ -52,8 +52,11 @@ func (i *testTokenIssuer) GenerateRefreshToken() (string, string, error) {
 }
 
 type testRefreshRepository struct {
-	createFn func(ctx context.Context, session *models.RefreshSession) (*models.RefreshSession, error)
-	getFn    func(ctx context.Context, tokenHash string) (*models.RefreshSession, error)
+	createFn       func(ctx context.Context, session *models.RefreshSession) (*models.RefreshSession, error)
+	getFn          func(ctx context.Context, tokenHash string) (*models.RefreshSession, error)
+	listFn         func(ctx context.Context, userID int64) ([]*models.RefreshSession, error)
+	revokeForUser  func(ctx context.Context, userID int64, sessionID int64) error
+	revokeOthersFn func(ctx context.Context, userID int64, keepSessionID int64) (int64, error)
 }
 
 func (r *testRefreshRepository) Create(ctx context.Context, session *models.RefreshSession) (*models.RefreshSession, error) {
@@ -76,8 +79,30 @@ func (r *testRefreshRepository) Rotate(ctx context.Context, currentSessionID int
 	return &models.RefreshSession{ID: 100, UserID: replacement.UserID}, nil
 }
 
+func (r *testRefreshRepository) ListActiveByUser(ctx context.Context, userID int64) ([]*models.RefreshSession, error) {
+	if r.listFn == nil {
+		return nil, nil
+	}
+
+	return r.listFn(ctx, userID)
+}
+
 func (r *testRefreshRepository) RevokeByID(_ context.Context, _ int64) error {
 	return nil
+}
+
+func (r *testRefreshRepository) RevokeByUserAndID(ctx context.Context, userID int64, sessionID int64) error {
+	if r.revokeForUser != nil {
+		return r.revokeForUser(ctx, userID, sessionID)
+	}
+	return nil
+}
+
+func (r *testRefreshRepository) RevokeAllByUserExceptSession(ctx context.Context, userID int64, keepSessionID int64) (int64, error) {
+	if r.revokeOthersFn != nil {
+		return r.revokeOthersFn(ctx, userID, keepSessionID)
+	}
+	return 0, nil
 }
 
 func TestAuthServiceExchangeDeviceCodeMapsPendingError(t *testing.T) {
@@ -140,4 +165,81 @@ func TestAuthServiceExchangeDeviceCodeSuccessCreatesUserAndSession(t *testing.T)
 	assert.Equal(t, "issued-access-token", result.AccessToken)
 	assert.Equal(t, "refresh-token", result.RefreshToken)
 	assert.Equal(t, createdUser.ID, result.User.ID)
+}
+
+func TestAuthServiceListActiveSessions(t *testing.T) {
+	now := time.Now().UTC()
+
+	svc, err := NewAuthService(
+		&testProvider{},
+		&testTokenIssuer{},
+		&repository.MockUserRepository{},
+		&testRefreshRepository{
+			listFn: func(_ context.Context, userID int64) ([]*models.RefreshSession, error) {
+				assert.Equal(t, int64(7), userID)
+				return []*models.RefreshSession{
+					{
+						ID:         11,
+						ClientInfo: "ua=other",
+						CreatedAt:  now.Add(-time.Hour),
+						IssuedAt:   now.Add(-time.Hour),
+					},
+					{
+						ID:         22,
+						ClientInfo: "ua=current",
+						CreatedAt:  now,
+						IssuedAt:   now,
+					},
+				}, nil
+			},
+		},
+		time.Hour,
+		24*time.Hour,
+	)
+	require.NoError(t, err)
+
+	sessions, err := svc.ListActiveSessions(context.Background(), 7, 22)
+	require.NoError(t, err)
+	require.Len(t, sessions, 2)
+	assert.Equal(t, int64(22), sessions[0].ID)
+	assert.True(t, sessions[0].Current)
+	assert.Equal(t, "ua=current", sessions[0].ClientMetadata)
+}
+
+func TestAuthServiceRevokeSessionForUserCurrentBlocked(t *testing.T) {
+	svc, err := NewAuthService(
+		&testProvider{},
+		&testTokenIssuer{},
+		&repository.MockUserRepository{},
+		&testRefreshRepository{},
+		time.Hour,
+		24*time.Hour,
+	)
+	require.NoError(t, err)
+
+	err = svc.RevokeSessionForUser(context.Background(), 7, 44, 44)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrCannotRevokeCurrentSession)
+}
+
+func TestAuthServiceRevokeOtherSessions(t *testing.T) {
+	svc, err := NewAuthService(
+		&testProvider{},
+		&testTokenIssuer{},
+		&repository.MockUserRepository{},
+		&testRefreshRepository{
+			revokeOthersFn: func(_ context.Context, userID int64, keepSessionID int64) (int64, error) {
+				assert.Equal(t, int64(7), userID)
+				assert.Equal(t, int64(44), keepSessionID)
+				return 2, nil
+			},
+		},
+		time.Hour,
+		24*time.Hour,
+	)
+	require.NoError(t, err)
+
+	revokedCount, err := svc.RevokeOtherSessions(context.Background(), 7, 44)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), revokedCount)
 }

@@ -16,8 +16,11 @@ type UserRepository interface {
 type RefreshSessionRepository interface {
 	Create(ctx context.Context, session *models.RefreshSession) (*models.RefreshSession, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshSession, error)
+	ListActiveByUser(ctx context.Context, userID int64) ([]*models.RefreshSession, error)
 	Rotate(ctx context.Context, currentSessionID int64, replacement *models.RefreshSession) (*models.RefreshSession, error)
 	RevokeByID(ctx context.Context, sessionID int64) error
+	RevokeByUserAndID(ctx context.Context, userID int64, sessionID int64) error
+	RevokeAllByUserExceptSession(ctx context.Context, userID int64, keepSessionID int64) (int64, error)
 }
 
 type ConferenceRepository interface {

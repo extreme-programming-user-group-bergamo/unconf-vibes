@@ -60,6 +60,10 @@ type exportCommandClient struct {
 	authClient *client.AuthenticatedClient
 }
 
+type sessionsCommandClient struct {
+	authClient *client.AuthenticatedClient
+}
+
 func (c *roomsCommandClient) ListRooms(ctx context.Context, slug string) ([]client.RoomResponse, error) {
 	return c.listClient.ListRooms(ctx, slug)
 }
@@ -162,6 +166,18 @@ func (c *editConferenceCommandClient) UpdateConference(ctx context.Context, slug
 
 func (c *exportCommandClient) ExportConferenceBookingsCSV(ctx context.Context, slug string, includeCancelled bool) ([]byte, error) {
 	return c.authClient.ExportConferenceBookingsCSV(ctx, slug, includeCancelled)
+}
+
+func (c *sessionsCommandClient) ListSessions(ctx context.Context) ([]client.SessionResponse, error) {
+	return c.authClient.ListSessions(ctx)
+}
+
+func (c *sessionsCommandClient) RevokeSession(ctx context.Context, sessionID int64) error {
+	return c.authClient.RevokeSession(ctx, sessionID)
+}
+
+func (c *sessionsCommandClient) RevokeOtherSessions(ctx context.Context) (int64, error) {
+	return c.authClient.RevokeOtherSessions(ctx)
 }
 
 func NewRootCmd() *cobra.Command {
@@ -275,6 +291,9 @@ room browsing, and booking workflows.`,
 	exportClient := &exportCommandClient{
 		authClient: authClient,
 	}
+	sessionsClient := &sessionsCommandClient{
+		authClient: authClient,
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -305,6 +324,7 @@ room browsing, and booking workflows.`,
 	rootCmd.AddCommand(newCreateCmd(createConferenceClient))
 	rootCmd.AddCommand(newEditCmd(editConferenceClient, ctxManager))
 	rootCmd.AddCommand(newExportCmd(exportClient, ctxManager))
+	rootCmd.AddCommand(newSessionsCmd(sessionsClient))
 
 	return rootCmd
 }

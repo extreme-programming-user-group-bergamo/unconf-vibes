@@ -60,6 +60,102 @@ func (ac *AuthenticatedClient) GetMe(ctx context.Context) (*UserResponse, error)
 	return retryUser, nil
 }
 
+// ListSessions fetches active sessions, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) ListSessions(ctx context.Context) ([]SessionResponse, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "ListSessions")
+
+	sessions, err := ac.client.ListSessions(ctx, accessToken)
+	if err == nil {
+		return sessions, nil
+	}
+
+	if !errors.Is(err, ErrUnauthorized) {
+		return nil, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "ListSessions")
+
+	retrySessions, retryErr := ac.client.ListSessions(ctx, newAccessToken)
+	if retryErr != nil {
+		return nil, fmt.Errorf("failed to list sessions after token refresh: %w", retryErr)
+	}
+
+	return retrySessions, nil
+}
+
+// RevokeSession revokes a selected session, automatically refreshing the access token on 401.
+func (ac *AuthenticatedClient) RevokeSession(ctx context.Context, sessionID int64) error {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "RevokeSession")
+
+	err = ac.client.RevokeSession(ctx, accessToken, sessionID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		return err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "RevokeSession")
+
+	if retryErr := ac.client.RevokeSession(ctx, newAccessToken, sessionID); retryErr != nil {
+		return fmt.Errorf("failed to revoke session after token refresh: %w", retryErr)
+	}
+
+	return nil
+}
+
+// RevokeOtherSessions revokes all sessions except the current one, automatically refreshing on 401.
+func (ac *AuthenticatedClient) RevokeOtherSessions(ctx context.Context) (int64, error) {
+	accessToken, err := ac.store.GetAccessToken()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	slog.Debug("auth client: attempting authenticated request", "method", "RevokeOtherSessions")
+
+	revokedCount, err := ac.client.RevokeOtherSessions(ctx, accessToken)
+	if err == nil {
+		return revokedCount, nil
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		return 0, err
+	}
+
+	newAccessToken, refreshErr := ac.tryRefresh(ctx)
+	if refreshErr != nil {
+		return 0, refreshErr
+	}
+
+	slog.Debug("auth client: retrying request after token refresh", "method", "RevokeOtherSessions")
+
+	retryRevokedCount, retryErr := ac.client.RevokeOtherSessions(ctx, newAccessToken)
+	if retryErr != nil {
+		return 0, fmt.Errorf("failed to revoke other sessions after token refresh: %w", retryErr)
+	}
+
+	return retryRevokedCount, nil
+}
+
 // UpdateMe updates the authenticated user's profile, automatically refreshing
 // the access token on 401.
 func (ac *AuthenticatedClient) UpdateMe(ctx context.Context, input UpdateProfileRequest) (*UserResponse, error) {

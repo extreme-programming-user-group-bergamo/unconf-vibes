@@ -19,6 +19,9 @@ UNCONF uses a **RESTful API** with JSON payloads.
 | POST | /auth/token | Exchange device code for access and refresh tokens | No | Implemented |
 | POST | /auth/refresh | Rotate access and refresh tokens | No | Implemented |
 | POST | /auth/revoke | Revoke current authenticated session | Yes | Implemented |
+| GET | /auth/sessions | List active authenticated sessions | Yes | Implemented |
+| DELETE | /auth/sessions/{session_id} | Revoke selected authenticated session | Yes | Implemented |
+| POST | /auth/revoke-others | Revoke all authenticated sessions except current | Yes | Implemented |
 | GET | /conferences | List conferences | No | Implemented |
 | GET | /conferences/{slug} | Get conference details | No | Implemented |
 | POST | /conferences | Create conference | Yes | Implemented |
@@ -45,9 +48,6 @@ UNCONF uses a **RESTful API** with JSON payloads.
 
 | Method | Path | Note |
 |--------|------|------|
-| GET | /auth/sessions | Refresh-session records exist, but session listing is not exposed in the router |
-| DELETE | /auth/sessions/{session_id} | Selective session revocation is not exposed in the router |
-| POST | /auth/revoke-others | Global revocation is not exposed in the router |
 | POST | /bookings | Client, TUI, and service logic exist, but no handler method or route registration is currently present |
 | PUT | /bookings/{id}/confirm | Organizer confirmation flow remains planned only |
 
@@ -97,15 +97,15 @@ sequenceDiagram
 - **Refresh Flow:** `POST /auth/refresh` is unauthenticated, accepts `refresh_token` in the request body, rotates both access and refresh tokens, and invalidates the previous refresh token
 - **Revocation Flow:** `POST /auth/revoke` revokes the current authenticated session using the `sid` claim from the access token
 - **Logout Semantics:** CLI `unconf logout` clears local credentials and calls the revoke endpoint when possible
-- **Current Gap:** session listing, selective revocation of other sessions, and revoke-others flows are still planned-only at the router layer
+- **Current Gap:** advanced booking confirmation (`PUT /bookings/{id}/confirm`) and booking-create route exposure remain planned-only in router docs.
 
 ## 5.5 Session Governance Model
 
 - **Session Identity:** each login creates a refresh-session record tied to a generated session ID
 - **Session Binding:** access tokens embed `sid`, and refresh-token rotation updates the matching refresh-session record
-- **Implemented Operations:** refresh-token rotation and current-session revocation
-- **Planned Operations:** session listing, targeted revocation of another session, and revoke-all-others
-- **Data Model Reality:** the database already includes refresh-session persistence, so the remaining work is API exposure and handler wiring
+- **Implemented Operations:** refresh-token rotation, current-session revocation, session listing, targeted revocation, and revoke-all-others
+- **Planned Operations:** none for core session-governance controls in Epic 1 scope
+- **Data Model Reality:** refresh-session persistence now includes per-session client metadata for listing and governance tooling
 
 ## 5.6 Authorization Matrix
 

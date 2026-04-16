@@ -289,6 +289,71 @@ func TestRevokeToken_ServerError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to revoke token")
 }
 
+func TestListSessions_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/auth/sessions", r.URL.Path)
+		assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"id":              12,
+				"client_metadata": "ua=test-client",
+				"created_at":      "2026-04-15T00:00:00Z",
+				"last_seen_at":    "2026-04-15T01:00:00Z",
+				"current":         true,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	sessions, err := c.ListSessions(context.Background(), "my-token")
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.Equal(t, int64(12), sessions[0].ID)
+	assert.True(t, sessions[0].Current)
+	assert.Equal(t, "ua=test-client", sessions[0].ClientMetadata)
+}
+
+func TestRevokeSession_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "session_not_found",
+				"message": "Session not found",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.RevokeSession(context.Background(), "my-token", 99)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSessionNotFound)
+}
+
+func TestRevokeOtherSessions_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/auth/revoke-others", r.URL.Path)
+		assert.Equal(t, "Bearer my-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"revoked_count": 3,
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	revokedCount, err := c.RevokeOtherSessions(context.Background(), "my-token")
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), revokedCount)
+}
+
 func TestExchangeDeviceCode_ContextCancelled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

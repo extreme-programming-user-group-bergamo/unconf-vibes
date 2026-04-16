@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -32,6 +33,8 @@ var (
 	ErrRequestForbidden     = errors.New("roommate request cannot be modified by current user")
 	ErrInvalidRequestState  = errors.New("roommate request is already resolved")
 	ErrOrganizerForbidden   = errors.New("organizer permissions required")
+	ErrSessionNotFound      = errors.New("session not found")
+	ErrCurrentSessionRevoke = errors.New("cannot revoke current session")
 )
 
 // DeviceFlowResponse represents the response from POST /auth/device.
@@ -71,6 +74,14 @@ type UpdateProfileRequest struct {
 type PendingResponse struct {
 	Status   string `json:"status"`
 	Interval int    `json:"interval"`
+}
+
+type SessionResponse struct {
+	ID             int64     `json:"id"`
+	ClientMetadata string    `json:"client_metadata"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastSeenAt     time.Time `json:"last_seen_at"`
+	Current        bool      `json:"current"`
 }
 
 // APIError represents an error response from the backend API.
@@ -215,6 +226,89 @@ func (c *Client) RevokeToken(ctx context.Context, accessToken string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) ListSessions(ctx context.Context, accessToken string) ([]SessionResponse, error) {
+	var result []SessionResponse
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Get("/auth/sessions")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, fmt.Errorf("failed to list sessions: %w", ErrUnauthorized)
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to list sessions: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	if result == nil {
+		result = []SessionResponse{}
+	}
+	return result, nil
+}
+
+func (c *Client) RevokeSession(ctx context.Context, accessToken string, sessionID int64) error {
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetError(&errEnvelope).
+		Delete("/auth/sessions/" + url.PathEscape(fmt.Sprintf("%d", sessionID)))
+	if err != nil {
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	switch resp.StatusCode() {
+	case http.StatusUnauthorized:
+		return fmt.Errorf("failed to revoke session: %w", ErrUnauthorized)
+	case http.StatusNotFound:
+		return fmt.Errorf("failed to revoke session: %w", ErrSessionNotFound)
+	case http.StatusBadRequest:
+		return fmt.Errorf("failed to revoke session: %w", ErrCurrentSessionRevoke)
+	}
+
+	if resp.IsError() {
+		return fmt.Errorf("failed to revoke session: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return nil
+}
+
+func (c *Client) RevokeOtherSessions(ctx context.Context, accessToken string) (int64, error) {
+	var result struct {
+		RevokedCount int64 `json:"revoked_count"`
+	}
+	var errEnvelope apiErrorEnvelope
+
+	resp, err := c.http.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetResult(&result).
+		SetError(&errEnvelope).
+		Post("/auth/revoke-others")
+	if err != nil {
+		return 0, fmt.Errorf("failed to revoke other sessions: %w", err)
+	}
+
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return 0, fmt.Errorf("failed to revoke other sessions: %w", ErrUnauthorized)
+	}
+
+	if resp.IsError() {
+		return 0, fmt.Errorf("failed to revoke other sessions: %s (HTTP %d)", errEnvelope.Error.Message, resp.StatusCode())
+	}
+
+	return result.RevokedCount, nil
 }
 
 // ErrUnauthorized is returned when the API responds with 401.

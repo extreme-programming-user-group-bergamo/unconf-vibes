@@ -1,0 +1,26 @@
+schema: 1
+story: "1.10"
+story_title: "Active Session Management"
+gate: "CONCERNS"
+status_reason: "Core AC behavior is implemented and validated by passing test/lint runs, but integration and CLI test depth for the new session-management surface is incomplete."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-04-16T00:05:22Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "TEST-INT-SESSION-001"
+    severity: medium
+    finding: "No API integration tests in internal/api/routes_test.go currently verify /auth/sessions and /auth/revoke-others behavior."
+    suggested_action: "Add route-level integration tests for list sessions, revoke selected session, revoke-others, and non-owned/not-found semantics."
+  - id: "TEST-CLI-SESSION-002"
+    severity: low
+    finding: "internal/cli/sessions_test.go covers only a subset of command paths (missing key success and auth-error scenarios)."
+    suggested_action: "Add tests for revoke success, revoke-others success (--yes), list empty state, and not-authenticated/session-expired messaging."
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 1, low: 1 }
+  recommendations:
+    must_fix: []
+    monitor:
+      - "Session list 'last_seen_at' is derived from issued_at in service mapping; confirm this is acceptable product semantics."

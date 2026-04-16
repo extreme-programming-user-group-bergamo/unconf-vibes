@@ -939,3 +939,46 @@ func TestAuthenticatedClient_CreateConference_AutoRefresh(t *testing.T) {
 	assert.Equal(t, "new-conf", result.Slug)
 	assert.Equal(t, int32(2), createCallCount.Load())
 }
+
+func TestAuthenticatedClient_ListSessions_AutoRefresh(t *testing.T) {
+	var sessionsCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/auth/sessions":
+			if sessionsCallCount.Add(1) == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{"code": "unauthorized", "message": "expired"},
+				})
+				return
+			}
+			assert.Equal(t, "Bearer new-access-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":              101,
+					"client_metadata": "ua=test",
+					"created_at":      "2026-04-15T00:00:00Z",
+					"last_seen_at":    "2026-04-15T00:30:00Z",
+					"current":         true,
+				},
+			})
+		case "/auth/refresh":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "new-access-token",
+				RefreshToken: "new-refresh-token",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := auth.NewMockTokenStore()
+	store.SetTokens("expired-access-token", "valid-refresh-token")
+
+	ac := NewAuthenticatedClient(NewClient(srv.URL), store)
+	sessions, err := ac.ListSessions(context.Background())
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.Equal(t, int64(101), sessions[0].ID)
+}

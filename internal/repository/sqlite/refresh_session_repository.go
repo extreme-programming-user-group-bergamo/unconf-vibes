@@ -25,9 +25,9 @@ func (r *RefreshSessionRepository) Create(ctx context.Context, session *models.R
 	}
 
 	query := `
-		INSERT INTO refresh_sessions (user_id, token_hash, expires_at, issued_at, replaced_by_id, revoked_at, last_access_jti)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, user_id, token_hash, expires_at, issued_at, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
+		INSERT INTO refresh_sessions (user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
 	`
 
 	created := models.RefreshSession{}
@@ -38,6 +38,7 @@ func (r *RefreshSessionRepository) Create(ctx context.Context, session *models.R
 		session.TokenHash,
 		session.ExpiresAt.UTC(),
 		session.IssuedAt.UTC(),
+		session.ClientInfo,
 		session.ReplacedByID,
 		session.RevokedAt,
 		session.LastAccessJTI,
@@ -47,6 +48,7 @@ func (r *RefreshSessionRepository) Create(ctx context.Context, session *models.R
 		&created.TokenHash,
 		&created.ExpiresAt,
 		&created.IssuedAt,
+		&created.ClientInfo,
 		&created.ReplacedByID,
 		&created.RevokedAt,
 		&created.LastAccessJTI,
@@ -62,7 +64,7 @@ func (r *RefreshSessionRepository) Create(ctx context.Context, session *models.R
 
 func (r *RefreshSessionRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshSession, error) {
 	query := `
-		SELECT id, user_id, token_hash, expires_at, issued_at, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
+		SELECT id, user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
 		FROM refresh_sessions
 		WHERE token_hash = ?
 	`
@@ -77,6 +79,38 @@ func (r *RefreshSessionRepository) GetByTokenHash(ctx context.Context, tokenHash
 	}
 
 	return session, nil
+}
+
+func (r *RefreshSessionRepository) ListActiveByUser(ctx context.Context, userID int64) ([]*models.RefreshSession, error) {
+	query := `
+		SELECT id, user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
+		FROM refresh_sessions
+		WHERE user_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active refresh sessions: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	sessions := make([]*models.RefreshSession, 0)
+	for rows.Next() {
+		session, scanErr := scanRefreshSessionRows(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("failed to scan active refresh session: %w", scanErr)
+		}
+		sessions = append(sessions, session)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate active refresh sessions: %w", err)
+	}
+
+	return sessions, nil
 }
 
 func (r *RefreshSessionRepository) Rotate(ctx context.Context, currentSessionID int64, replacement *models.RefreshSession) (*models.RefreshSession, error) {
@@ -128,9 +162,9 @@ func (r *RefreshSessionRepository) Rotate(ctx context.Context, currentSessionID 
 
 func insertRefreshSessionTx(ctx context.Context, tx *sql.Tx, session *models.RefreshSession) (*models.RefreshSession, error) {
 	query := `
-		INSERT INTO refresh_sessions (user_id, token_hash, expires_at, issued_at, replaced_by_id, revoked_at, last_access_jti)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, user_id, token_hash, expires_at, issued_at, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
+		INSERT INTO refresh_sessions (user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, user_id, token_hash, expires_at, issued_at, client_info, replaced_by_id, revoked_at, last_access_jti, created_at, updated_at
 	`
 
 	created := models.RefreshSession{}
@@ -141,6 +175,7 @@ func insertRefreshSessionTx(ctx context.Context, tx *sql.Tx, session *models.Ref
 		session.TokenHash,
 		session.ExpiresAt.UTC(),
 		session.IssuedAt.UTC(),
+		session.ClientInfo,
 		session.ReplacedByID,
 		session.RevokedAt,
 		session.LastAccessJTI,
@@ -150,6 +185,7 @@ func insertRefreshSessionTx(ctx context.Context, tx *sql.Tx, session *models.Ref
 		&created.TokenHash,
 		&created.ExpiresAt,
 		&created.IssuedAt,
+		&created.ClientInfo,
 		&created.ReplacedByID,
 		&created.RevokedAt,
 		&created.LastAccessJTI,
@@ -174,6 +210,40 @@ func scanRefreshSessionRow(row *sql.Row) (*models.RefreshSession, error) {
 		&session.TokenHash,
 		&session.ExpiresAt,
 		&session.IssuedAt,
+		&session.ClientInfo,
+		&replacedByID,
+		&revokedAt,
+		&session.LastAccessJTI,
+		&session.CreatedAt,
+		&session.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if replacedByID.Valid {
+		session.ReplacedByID = &replacedByID.Int64
+	}
+
+	if revokedAt.Valid {
+		session.RevokedAt = &revokedAt.Time
+	}
+
+	return &session, nil
+}
+
+func scanRefreshSessionRows(rows *sql.Rows) (*models.RefreshSession, error) {
+	var session models.RefreshSession
+	var replacedByID sql.NullInt64
+	var revokedAt sql.NullTime
+
+	err := rows.Scan(
+		&session.ID,
+		&session.UserID,
+		&session.TokenHash,
+		&session.ExpiresAt,
+		&session.IssuedAt,
+		&session.ClientInfo,
 		&replacedByID,
 		&revokedAt,
 		&session.LastAccessJTI,
@@ -217,6 +287,61 @@ func (r *RefreshSessionRepository) RevokeByID(ctx context.Context, sessionID int
 	}
 
 	return nil
+}
+
+func (r *RefreshSessionRepository) RevokeByUserAndID(ctx context.Context, userID int64, sessionID int64) error {
+	query := `
+		WITH RECURSIVE session_chain(id, replaced_by_id) AS (
+			SELECT id, replaced_by_id
+			FROM refresh_sessions
+			WHERE id = ? AND user_id = ?
+			UNION ALL
+			SELECT rs.id, rs.replaced_by_id
+			FROM refresh_sessions rs
+			INNER JOIN session_chain sc ON rs.id = sc.replaced_by_id
+			WHERE rs.user_id = ?
+		)
+		UPDATE refresh_sessions
+		SET revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id IN (SELECT id FROM session_chain)
+		  AND revoked_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query, sessionID, userID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh session by user and id: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check revoked refresh session by user and id rows: %w", err)
+	}
+
+	if affected == 0 {
+		return repository.ErrRefreshSessionNotFound
+	}
+
+	return nil
+}
+
+func (r *RefreshSessionRepository) RevokeAllByUserExceptSession(ctx context.Context, userID int64, keepSessionID int64) (int64, error) {
+	query := `
+		UPDATE refresh_sessions
+		SET revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND id != ? AND revoked_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query, userID, keepSessionID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to revoke all refresh sessions by user except session: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to check revoked refresh sessions by user except session rows: %w", err)
+	}
+
+	return affected, nil
 }
 
 var _ repository.RefreshSessionRepository = (*RefreshSessionRepository)(nil)

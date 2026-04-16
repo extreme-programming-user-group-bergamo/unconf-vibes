@@ -16,10 +16,13 @@ import (
 )
 
 type testAuthService struct {
-	startFn    func(ctx context.Context) (*auth.DeviceAuthorization, error)
-	exchangeFn func(ctx context.Context, deviceCode string) (*service.AuthResult, error)
-	refreshFn  func(ctx context.Context, refreshToken string) (*service.AuthResult, error)
-	revokeFn   func(ctx context.Context, sessionID int64) error
+	startFn           func(ctx context.Context) (*auth.DeviceAuthorization, error)
+	exchangeFn        func(ctx context.Context, deviceCode string) (*service.AuthResult, error)
+	refreshFn         func(ctx context.Context, refreshToken string) (*service.AuthResult, error)
+	revokeFn          func(ctx context.Context, sessionID int64) error
+	listSessionsFn    func(ctx context.Context, userID int64, currentSessionID int64) ([]service.SessionView, error)
+	revokeForUserFn   func(ctx context.Context, userID int64, sessionID int64, currentSessionID int64) error
+	revokeOthersForFn func(ctx context.Context, userID int64, currentSessionID int64) (int64, error)
 }
 
 func (s *testAuthService) StartDeviceFlow(ctx context.Context) (*auth.DeviceAuthorization, error) {
@@ -52,6 +55,27 @@ func (s *testAuthService) RevokeSession(ctx context.Context, sessionID int64) er
 	}
 
 	return nil
+}
+
+func (s *testAuthService) ListActiveSessions(ctx context.Context, userID int64, currentSessionID int64) ([]service.SessionView, error) {
+	if s.listSessionsFn != nil {
+		return s.listSessionsFn(ctx, userID, currentSessionID)
+	}
+	return nil, nil
+}
+
+func (s *testAuthService) RevokeSessionForUser(ctx context.Context, userID int64, sessionID int64, currentSessionID int64) error {
+	if s.revokeForUserFn != nil {
+		return s.revokeForUserFn(ctx, userID, sessionID, currentSessionID)
+	}
+	return nil
+}
+
+func (s *testAuthService) RevokeOtherSessions(ctx context.Context, userID int64, currentSessionID int64) (int64, error) {
+	if s.revokeOthersForFn != nil {
+		return s.revokeOthersForFn(ctx, userID, currentSessionID)
+	}
+	return 0, nil
 }
 
 func TestAuthHandlerStartDeviceFlowSuccess(t *testing.T) {
@@ -228,4 +252,84 @@ func TestAuthHandler_Revoke_NilService(t *testing.T) {
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	assert.Contains(t, w.Body.String(), "service_unavailable")
+}
+
+func TestAuthHandler_ListSessions_Success(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{
+		listSessionsFn: func(_ context.Context, userID int64, currentSessionID int64) ([]service.SessionView, error) {
+			assert.Equal(t, int64(42), userID)
+			assert.Equal(t, int64(99), currentSessionID)
+			return []service.SessionView{
+				{
+					ID:             99,
+					ClientMetadata: "ua=test",
+					Current:        true,
+				},
+			}, nil
+		},
+	})
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/auth/sessions", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		c.Set("session_id", int64(99))
+		handler.ListSessions(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/sessions", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"id":99`)
+	assert.Contains(t, w.Body.String(), `"current":true`)
+}
+
+func TestAuthHandler_RevokeSessionByID_RejectsCurrentSession(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{
+		revokeForUserFn: func(_ context.Context, _ int64, _ int64, _ int64) error {
+			return fmt.Errorf("failed to revoke selected session: %w", service.ErrCannotRevokeCurrentSession)
+		},
+	})
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.DELETE("/auth/sessions/:session_id", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		c.Set("session_id", int64(99))
+		handler.RevokeSessionByID(c)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/auth/sessions/99", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Cannot revoke current session")
+}
+
+func TestAuthHandler_RevokeOthers_Success(t *testing.T) {
+	handler := NewAuthHandler(&testAuthService{
+		revokeOthersForFn: func(_ context.Context, userID int64, currentSessionID int64) (int64, error) {
+			assert.Equal(t, int64(42), userID)
+			assert.Equal(t, int64(99), currentSessionID)
+			return 3, nil
+		},
+	})
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/revoke-others", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		c.Set("session_id", int64(99))
+		handler.RevokeOthers(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/revoke-others", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"revoked_count":3`)
 }

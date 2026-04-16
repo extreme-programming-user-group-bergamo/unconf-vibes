@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,14 @@ type AuthenticatedUser struct {
 	GitHubID    string `json:"github_id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
+}
+
+type SessionView struct {
+	ID             int64     `json:"id"`
+	ClientMetadata string    `json:"client_metadata,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastSeenAt     time.Time `json:"last_seen_at"`
+	Current        bool      `json:"current"`
 }
 
 type AuthService struct {
@@ -204,6 +213,7 @@ func (s *AuthService) issueSessionTokens(ctx context.Context, user *models.User,
 		TokenHash:     hashedRefreshToken,
 		ExpiresAt:     now.Add(s.refreshTTL),
 		IssuedAt:      now,
+		ClientInfo:    sessionClientMetadataFromContext(ctx),
 		LastAccessJTI: jti,
 	}
 
@@ -261,6 +271,72 @@ func (s *AuthService) RevokeSession(ctx context.Context, sessionID int64) error 
 	slog.Info("session revoked", "session_id", sessionID)
 
 	return nil
+}
+
+func (s *AuthService) ListActiveSessions(ctx context.Context, userID int64, currentSessionID int64) ([]SessionView, error) {
+	sessions, err := s.refreshRepo.ListActiveByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active sessions: %w", err)
+	}
+
+	result := make([]SessionView, 0, len(sessions))
+	for _, session := range sessions {
+		if session == nil {
+			continue
+		}
+
+		result = append(result, SessionView{
+			ID:             session.ID,
+			ClientMetadata: session.ClientInfo,
+			CreatedAt:      session.CreatedAt,
+			LastSeenAt:     session.IssuedAt,
+			Current:        session.ID == currentSessionID,
+		})
+	}
+
+	slices.SortFunc(result, func(a, b SessionView) int {
+		if a.Current && !b.Current {
+			return -1
+		}
+		if !a.Current && b.Current {
+			return 1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return -1
+		}
+		if b.CreatedAt.After(a.CreatedAt) {
+			return 1
+		}
+		return 0
+	})
+
+	return result, nil
+}
+
+func (s *AuthService) RevokeSessionForUser(ctx context.Context, userID int64, sessionID int64, currentSessionID int64) error {
+	if sessionID == currentSessionID {
+		return fmt.Errorf("failed to revoke selected session: %w", ErrCannotRevokeCurrentSession)
+	}
+
+	if err := s.refreshRepo.RevokeByUserAndID(ctx, userID, sessionID); err != nil {
+		if errors.Is(err, repository.ErrRefreshSessionNotFound) {
+			return fmt.Errorf("failed to revoke selected session: %w", ErrSessionNotFound)
+		}
+		return fmt.Errorf("failed to revoke selected session: %w", err)
+	}
+
+	slog.Info("selected session revoked", "user_id", userID, "session_id", sessionID)
+	return nil
+}
+
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID int64, currentSessionID int64) (int64, error) {
+	revokedCount, err := s.refreshRepo.RevokeAllByUserExceptSession(ctx, userID, currentSessionID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to revoke other sessions: %w", err)
+	}
+
+	slog.Info("revoked all other sessions", "user_id", userID, "current_session_id", currentSessionID, "revoked_count", revokedCount)
+	return revokedCount, nil
 }
 
 func (s *AuthService) upsertUser(ctx context.Context, profile *auth.GitHubProfile) (*models.User, error) {

@@ -46,6 +46,9 @@ func NewRouter(
 		protected.Use(middleware.AuthMiddleware(tokenValidator))
 
 		protected.POST("/auth/revoke", authHandler.Revoke)
+		protected.GET("/auth/sessions", authHandler.ListSessions)
+		protected.DELETE("/auth/sessions/:session_id", authHandler.RevokeSessionByID)
+		protected.POST("/auth/revoke-others", authHandler.RevokeOthers)
 
 		if userHandler != nil {
 			protected.GET("/users/me", userHandler.GetMe)
