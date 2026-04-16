@@ -35,6 +35,7 @@ UNCONF uses a **RESTful API** with JSON payloads.
 | DELETE | /conferences/{slug}/rooms/{number} | Remove room | Yes (Organizer) | Implemented |
 | POST | /conferences/{slug}/organizers | Add organizer | Yes (Owner) | Implemented |
 | DELETE | /conferences/{slug}/organizers/{userID} | Remove organizer | Yes (Owner) | Implemented |
+| POST | /bookings | Create booking | Yes | Implemented |
 | GET | /bookings | Get current user's active bookings | Yes | Implemented |
 | DELETE | /bookings/{id} | Cancel booking | Yes | Implemented |
 | POST | /requests | Send roommate request | Yes | Implemented |
@@ -44,12 +45,11 @@ UNCONF uses a **RESTful API** with JSON payloads.
 | GET | /users/me | Get current user profile | Yes | Implemented |
 | PUT | /users/me | Update current user profile | Yes | Implemented |
 
-### Documented Target Endpoints Not Yet Wired
+### Explicitly Removed from Current Product Surface
 
 | Method | Path | Note |
 |--------|------|------|
-| POST | /bookings | Client, TUI, and service logic exist, but no handler method or route registration is currently present |
-| PUT | /bookings/{id}/confirm | Organizer confirmation flow remains planned only |
+| PUT | /bookings/{id}/confirm | Removed by Story 5.10 decision (`removed` path); no route or CLI command is expected |
 
 ## 5.2 Authentication Flow
 
@@ -97,7 +97,7 @@ sequenceDiagram
 - **Refresh Flow:** `POST /auth/refresh` is unauthenticated, accepts `refresh_token` in the request body, rotates both access and refresh tokens, and invalidates the previous refresh token
 - **Revocation Flow:** `POST /auth/revoke` revokes the current authenticated session using the `sid` claim from the access token
 - **Logout Semantics:** CLI `unconf logout` clears local credentials and calls the revoke endpoint when possible
-- **Current Gap:** advanced booking confirmation (`PUT /bookings/{id}/confirm`) and booking-create route exposure remain planned-only in router docs.
+- **Current Gap:** none for the booking API surface documented above; `PUT /bookings/{id}/confirm` is intentionally removed from the active contract.
 
 ## 5.5 Session Governance Model
 
@@ -112,10 +112,9 @@ sequenceDiagram
 | Endpoint Pattern | Attendee | Organizer | Notes |
 |------------------|----------|-----------|-------|
 | `GET /conferences*`, `GET /conferences/{slug}/rooms` | ✅ | ✅ | Public read endpoints are intentionally unauthenticated |
-| `GET /bookings`, `DELETE /bookings/{id}`, `GET /requests`, `POST /requests`, `PUT /requests/{id}/*`, `GET/PUT /users/me`, `POST /auth/revoke` | ✅ (own resources) | ✅ (own resources) | Ownership and identity come from the authenticated access token |
+| `POST /bookings`, `GET /bookings`, `DELETE /bookings/{id}`, `GET /requests`, `POST /requests`, `PUT /requests/{id}/*`, `GET/PUT /users/me`, `POST /auth/revoke` | ✅ (own resources) | ✅ (own resources) | Ownership and identity come from the authenticated access token |
 | `POST /conferences` | ⚠️ | ✅ | Authenticated creator bootstrap is allowed for the first conference; later creates require existing organizer membership in service logic |
 | `PUT /conferences/{slug}`, `POST/PUT/DELETE /conferences/{slug}/rooms`, `GET /conferences/{slug}/dashboard`, `GET /conferences/{slug}/export` | ❌ | ✅ (Organizer) | Guarded by organizer middleware |
 | `POST/DELETE /conferences/{slug}/organizers*` | ❌ | ✅ (Owner) | Guarded by owner-only organizer middleware |
-| `POST /bookings`, `PUT /bookings/{id}/confirm` | Planned | Planned | Still part of the target design, but not currently exposed in the router |
 
 ---

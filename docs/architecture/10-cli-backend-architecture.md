@@ -29,7 +29,8 @@ internal/cli/
 
 - `unconf rooms` is a composite surface: attendee exploration lives in `rooms.go`, while organizer room-management subcommands live in `rooms_manage.go`.
 - `unconf edit` replaces the earlier planned organizer placeholder command set; there is no standalone `confirm.go` in the current codebase.
-- The direct-booking CLI and the booking wizard both depend on `POST /bookings`; router wiring for that endpoint is still missing server-side.
+- The direct-booking CLI and booking wizard use the live `POST /bookings` route.
+- Organizer manual booking confirmation is removed from the active surface; no `unconf confirm` command or `PUT /bookings/{id}/confirm` route is expected.
 
 ## 10.2 TUI Architecture (Bubble Tea)
 
@@ -73,7 +74,7 @@ internal/api/
     └── errors.go
 ```
 
-- `routes.go` currently registers booking list and cancel routes, but not booking creation.
+- `routes.go` currently registers booking create/list/cancel routes.
 - Organizer-only dashboard, export, room management, and organizer membership routes are all part of the current router surface.
 
 ---

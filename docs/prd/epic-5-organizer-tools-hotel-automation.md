@@ -134,4 +134,6 @@
 2. If retained, the API, CLI, and architecture docs all expose and describe the same confirmation behavior
 3. If removed, legacy references to organizer confirmation are deleted from the PRD and architecture set
 
+**Decision (2026-04-16):** `removed` path selected. Manual organizer booking confirmation is out of scope for the current product surface; there is no `unconf confirm` command and no `PUT /bookings/{id}/confirm` API contract.
+
 ---

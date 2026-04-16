@@ -39,7 +39,7 @@
     - [8.1 User Login Flow](./8-core-workflows.md#81-user-login-flow)
     - [8.2 Room Booking Flow (TUI)](./8-core-workflows.md#82-room-booking-flow-tui)
     - [8.3 Roommate Request Flow](./8-core-workflows.md#83-roommate-request-flow)
-    - [8.4 Booking Confirmation Flow (Organizer)](./8-core-workflows.md#84-booking-confirmation-flow-organizer)
+    - [8.4 Booking Lifecycle Reality (No Organizer Confirm Command)](./8-core-workflows.md#84-booking-lifecycle-reality-no-organizer-confirm-command)
   - [9. Database Schema](./9-database-schema.md)
     - [9.1 Schema DDL](./9-database-schema.md#91-schema-ddl)
   - [10. CLI & Backend Architecture](./10-cli-backend-architecture.md)

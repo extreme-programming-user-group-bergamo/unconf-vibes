@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,11 @@ import (
 const testSymmetricKey = "0123456789abcdef0123456789abcdef"
 
 func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService, *sql.DB) {
+	srv, _, tokenService, db := setupIntegrationRouterWithEngine(t)
+	return srv, tokenService, db
+}
+
+func setupIntegrationRouterWithEngine(t *testing.T) (*httptest.Server, *gin.Engine, *auth.TokenService, *sql.DB) {
 	t.Helper()
 
 	db, err := sqlite.NewConnectionManager(context.Background(), ":memory:")
@@ -78,7 +84,7 @@ func setupIntegrationRouter(t *testing.T) (*httptest.Server, *auth.TokenService,
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	return srv, tokenService, db
+	return srv, router, tokenService, db
 }
 
 func createTestUser(t *testing.T, db *sql.DB) *models.User {
@@ -1655,6 +1661,30 @@ func TestPostBookings_RoomFromDifferentConferenceReturns404(t *testing.T) {
 	var body map[string]interface{}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, "not_found", body["error"].(map[string]interface{})["code"])
+}
+
+func TestPutBookingsConfirm_NotRegisteredReturns404(t *testing.T) {
+	srv, router, tokenService, db := setupIntegrationRouterWithEngine(t)
+	user := createTestUserWithName(t, db, "gh-confirm-missing", "confirm-missing@test.com", "No Confirm", "public")
+	token, _ := createTestSession(t, db, user.ID, tokenService)
+
+	for _, route := range router.Routes() {
+		assert.Falsef(
+			t,
+			route.Method == http.MethodPut && route.Path == "/bookings/:id/confirm",
+			"unexpectedly registered removed route: %s %s",
+			route.Method,
+			route.Path,
+		)
+	}
+
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/bookings/42/confirm", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestDeleteBookings_CancelsBookingAndPreservesRoommate(t *testing.T) {

@@ -6,11 +6,11 @@
 |------|------------|
 | **Unconference** | A participant-driven meeting format (also called Open Space) where the agenda is created by attendees on the day. Examples: SoCraTes Italia, Polenta & Deploy |
 | **Attendee** | A user who has a booking (active or requested) for a conference. Implicit role — no separate entity |
-| **Organizer** | A user with owner or admin role for a conference. Can view all attendee data and confirm bookings |
+| **Organizer** | A user with owner or admin role for a conference. Can view all attendee data and manage organizer-only conference operations |
 | **Roommate** | A user sharing a hotel room with another attendee. Created via roommate request flow |
 | **Privacy Setting** | User's visibility preference: **Public** (name shown to other attendees) or **Private** (appears as "Private attendee") |
 | **Context** | The currently selected conference for CLI commands. Set via `unconf checkout <slug>` |
-| **Booking Status** | Lifecycle state of a reservation: **requested** → **confirmed** → **cancelled** |
+| **Booking Status** | Lifecycle state of a reservation: **requested** (created), optional **confirmed** state in data model, or **cancelled** |
 
 ## Technical Terms
 
@@ -42,7 +42,6 @@
 | `unconf attendees` | List conference attendees |
 | `unconf config` | Update profile settings |
 | `unconf dashboard` | Organizer dashboard TUI |
-| `unconf confirm <id>` | Confirm booking (organizer) |
 | `unconf export` | Export CSV (organizer) |
 
 ## API Status Codes

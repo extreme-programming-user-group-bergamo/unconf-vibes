@@ -91,26 +91,23 @@ sequenceDiagram
     CLI->>Bob: "Accepted! You're in Room 204 with Alice"
 ```
 
-## 8.4 Booking Confirmation Flow (Organizer)
+## 8.4 Booking Lifecycle Reality (No Organizer Confirm Command)
 
 ```mermaid
 sequenceDiagram
-    participant Hotel
-    participant Organizer
+    participant User
     participant CLI as unconf CLI
     participant API as UNCONF API
-    participant User
+    participant Hotel
 
-    Note over User,Hotel: Booking created with status "requested"
-    
-    Hotel-->>Organizer: Confirmation (email/phone)
-    
-    Organizer->>CLI: unconf confirm 42
-    CLI->>API: PUT /bookings/42/confirm
-    API->>API: Update status to "confirmed"
-    API->>User: Send confirmation email
-    API-->>CLI: booking confirmed
-    CLI->>Organizer: "Booking #42 confirmed"
+    User->>CLI: unconf book <room>
+    CLI->>API: POST /bookings
+    API->>API: Create booking (status: requested)
+    API->>Hotel: Send booking notification email
+    API-->>CLI: booking created
+    CLI->>User: booking requested
+
+    Note over CLI,API: No organizer-driven `unconf confirm` command or `PUT /bookings/{id}/confirm` API endpoint
 ```
 
 ---

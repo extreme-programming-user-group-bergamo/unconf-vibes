@@ -149,6 +149,15 @@ func TestRootCmdIncludesExportCommand(t *testing.T) {
 	assert.Equal(t, "export", exportCmd.Name())
 }
 
+func TestRootCmdDoesNotIncludeConfirmCommand(t *testing.T) {
+	cmd := NewRootCmd()
+
+	confirmCmd, _, err := cmd.Find([]string{"confirm"})
+	require.ErrorContains(t, err, "unknown command \"confirm\" for \"unconf\"")
+	require.NotNil(t, confirmCmd)
+	assert.Equal(t, "unconf", confirmCmd.Name())
+}
+
 func TestDBStatusCommand(t *testing.T) {
 	t.Setenv("UNCONF_API_ENDPOINT", "http://127.0.0.1:8080")
 	t.Setenv("UNCONF_LOG_LEVEL", "debug")

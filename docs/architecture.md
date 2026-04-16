@@ -438,7 +438,6 @@ UNCONF uses a **RESTful API** with JSON payloads.
 | GET | /bookings | Get user's bookings | Yes |
 | POST | /bookings | Create booking | Yes |
 | DELETE | /bookings/{id} | Cancel booking | Yes |
-| PUT | /bookings/{id}/confirm | Confirm booking | Yes (Organizer) |
 | GET | /requests | Get roommate requests | Yes |
 | POST | /requests | Send roommate request | Yes |
 | PUT | /requests/{id}/accept | Accept request | Yes |
@@ -511,7 +510,7 @@ sequenceDiagram
 | `GET /bookings`, `POST /bookings`, `DELETE /bookings/{id}` | ✅ (own resources) | ✅ | Enforce ownership unless organizer override is required |
 | `GET /requests`, `POST /requests`, `PUT /requests/{id}/*` | ✅ (own requests) | ✅ | Ownership checks on source/target user |
 | `GET/PUT /users/me` | ✅ | ✅ | Self-service profile only |
-| `POST /conferences`, `POST /conferences/{slug}/rooms`, `PUT /bookings/{id}/confirm`, `GET /conferences/{slug}/export` | ❌ | ✅ | Organizer role required for conference scope |
+| `POST /conferences`, `POST /conferences/{slug}/rooms`, `GET /conferences/{slug}/export` | ❌ | ✅ | Organizer role required for conference scope |
 
 ---
 
@@ -686,26 +685,23 @@ sequenceDiagram
     CLI->>Bob: "Accepted! You're in Room 204 with Alice"
 ```
 
-### 8.4 Booking Confirmation Flow (Organizer)
+### 8.4 Booking Lifecycle Reality (No Organizer Confirm Command)
 
 ```mermaid
 sequenceDiagram
-    participant Hotel
-    participant Organizer
+    participant User
     participant CLI as unconf CLI
     participant API as UNCONF API
-    participant User
+    participant Hotel
 
-    Note over User,Hotel: Booking created with status "requested"
-    
-    Hotel-->>Organizer: Confirmation (email/phone)
-    
-    Organizer->>CLI: unconf confirm 42
-    CLI->>API: PUT /bookings/42/confirm
-    API->>API: Update status to "confirmed"
-    API->>User: Send confirmation email
-    API-->>CLI: booking confirmed
-    CLI->>Organizer: "Booking #42 confirmed"
+    User->>CLI: unconf book <room>
+    CLI->>API: POST /bookings
+    API->>API: Create booking (status: requested)
+    API->>Hotel: Send booking notification email
+    API-->>CLI: booking created
+    CLI->>User: booking requested
+
+    Note over CLI,API: No organizer-driven `unconf confirm` command or `PUT /bookings/{id}/confirm` API endpoint
 ```
 
 ---
@@ -840,7 +836,7 @@ internal/cli/
 ├── attendees.go      # unconf attendees
 ├── dashboard.go      # unconf dashboard (organizer)
 ├── create.go         # unconf create (organizer)
-├── confirm.go        # unconf confirm (organizer)
+├── edit.go           # unconf edit [slug]
 └── export.go         # unconf export (organizer)
 ```
 
@@ -1322,7 +1318,7 @@ All functional requirements (FR1-FR24) and non-functional requirements (NFR1-NFR
 |------|------------|
 | **Unconference** | A participant-driven meeting format (also called Open Space) where the agenda is created by attendees on the day. Examples: SoCraTes Italia, Polenta & Deploy |
 | **Attendee** | A user who has a booking (active or requested) for a conference. Implicit role — no separate entity |
-| **Organizer** | A user with owner or admin role for a conference. Can view all attendee data and confirm bookings |
+| **Organizer** | A user with owner or admin role for a conference. Can view all attendee data and manage organizer-only conference operations |
 | **Roommate** | A user sharing a hotel room with another attendee. Created via roommate request flow |
 | **Privacy Setting** | User's visibility preference: **Public** (name shown to other attendees) or **Private** (appears as "Private attendee") |
 | **Context** | The currently selected conference for CLI commands. Set via `unconf checkout <slug>` |
@@ -1358,7 +1354,6 @@ All functional requirements (FR1-FR24) and non-functional requirements (NFR1-NFR
 | `unconf attendees` | List conference attendees |
 | `unconf config` | Update profile settings |
 | `unconf dashboard` | Organizer dashboard TUI |
-| `unconf confirm <id>` | Confirm booking (organizer) |
 | `unconf export` | Export CSV (organizer) |
 
 ### API Status Codes
