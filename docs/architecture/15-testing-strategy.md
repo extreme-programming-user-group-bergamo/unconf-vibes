@@ -6,12 +6,12 @@
 - **30% Integration Tests** — Repository with in-memory SQLite
 - **10% Command/TUI Smoke Tests** — Manual or focused integration validation for full user flows
 
-## 15.2 Current Coverage Notes (2026-04-15)
+## 15.2 Current Coverage Notes (2026-04-16)
 
 - Automated tests exist across middleware, handlers, services, repositories, CLI commands, HTTP clients, and TUI packages.
 - `cmd/server/main_integration_test.go` exercises server bootstrap and integration behavior.
 - Room explorer, booking wizard state, organizer dashboard behavior, cancellation, attendee flows, and CSV export all have automated coverage.
-- There is no end-to-end automated test for booking creation against the live router because `POST /bookings` is not currently registered in `internal/api/routes.go`.
+- End-to-end CLI lifecycle smoke coverage now exists for `login -> checkout -> rooms/book -> status -> cancel` against the real in-memory router composition (`internal/cli/booking_lifecycle_smoke_test.go`).
 
 ## 15.3 Representative Test Examples
 
@@ -40,7 +40,7 @@ func TestBookingRepository_Create(t *testing.T) {
 | Token revocation | `POST /auth/revoke` then call protected endpoint | Request denied (401) |
 | Authorization matrix | Attendee calls organizer-only endpoints | Request denied (403) |
 | Room explorer | `unconf rooms` | TUI loads available rooms for active context |
-| Room booking submission | `unconf rooms` wizard or `unconf book <room>` | Currently blocked until `POST /bookings` is wired in the live router |
+| Room booking submission | `unconf rooms` fallback/list + `unconf book <room>` | Booking is created and visible via `unconf status` |
 | Cancellation | `unconf cancel` | Booking cancelled |
 | Organizer dashboard | `unconf dashboard` | Organizer metrics and attendee detail visible |
 | CSV export | `unconf export --output bookings.csv` | CSV written with conference bookings |

@@ -1,0 +1,60 @@
+schema: 1
+story: '3.8'
+story_title: 'Story 3.8: Booking Lifecycle Smoke Coverage'
+gate: PASS
+status_reason: 'Validated AC1-AC3: smoke tests cover login→checkout→rooms/book→status→cancel on real router/service/repository wiring, and repeatable smoke expectations are documented.'
+reviewer: 'Quinn (QA)'
+updated: '2026-04-16T12:00:00Z'
+quality_score: 97
+expires: '2026-04-30T00:00:00Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed:
+    count: 1
+    suites:
+      - 'internal/cli/booking_lifecycle_smoke_test.go'
+  tests_executed:
+    - 'go test ./internal/cli -run TestBookingLifecycleSmoke -count=1'
+    - 'make test'
+    - 'make lint'
+  trace:
+    ac_covered: [1, 2, 3]
+    ac_gaps: []
+
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 1
+  recommendations:
+    must_fix: []
+    monitor:
+      - 'Keep the lifecycle smoke provider deterministic; if auth provider contracts change, update smoke stub expectations and command assertions together.'
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Smoke coverage exercises authenticated router paths and preserves normalized unauthorized/forbidden handling via existing command/client mappings.'
+  performance:
+    status: PASS
+    notes: 'The added tests are integration-focused and run entirely in-memory without introducing production runtime overhead.'
+  reliability:
+    status: PASS
+    notes: 'Lifecycle state transitions are asserted end-to-end, including occupancy deltas before and after cancellation and a room-full failure scenario.'
+  maintainability:
+    status: PASS
+    notes: 'Implementation reuses existing command clients, handlers, services, and repository wiring patterns without introducing test-only bypasses.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add a follow-up smoke case that drives the full interactive TUI wizard path under a pseudo-terminal harness once stable in CI.'
+      refs:
+        - 'internal/cli/rooms.go'
+        - 'internal/tui/wizard/model.go'
